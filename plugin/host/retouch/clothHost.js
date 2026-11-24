@@ -10,13 +10,27 @@ let current;
 let sequence = 0;
 
 function requireDocument() {
-    const doc = app.activeDocument;
+    const doc = app.documents.length ? app.activeDocument : null;
     if (!doc) throw Error("请先打开 Photoshop 文档");
-    if (doc.mode !== constants.DocumentMode.RGB || doc.bitsPerChannel !== constants.BitsPerChannelType.EIGHT ||
-        doc.colorProfileName !== PROFILE) throw Error("P1 仅支持 8 位 sRGB 文档。请转换文档副本后重试。");
-    if (!Number.isInteger(doc.activeHistoryState?.id)) throw Error("无法确认 Photoshop 历史状态");
     if (doc.quickMaskMode) throw Error("请退出快速蒙版模式后继续");
     return doc;
+}
+
+function documentFormat(doc) {
+    const { RGB, CMYK, LAB, GRAYSCALE, INDEXEDCOLOR } = constants.DocumentMode;
+    const { EIGHT, SIXTEEN, THIRTYTWO } = constants.BitsPerChannelType;
+    const mode = doc.mode;
+    const bits = doc.bitsPerChannel;
+    const profile = doc.colorProfileName;
+    const depth = bits === EIGHT ? 8 : bits === SIXTEEN ? 16 : bits === THIRTYTWO ? 32 : bits === constants.BitsPerChannelType.ONE ? 1 : null;
+    const modeLabel = new Map([[RGB, "RGB"], [CMYK, "CMYK"], [LAB, "Lab"], [GRAYSCALE, "灰度"], [INDEXEDCOLOR, "索引颜色"]]).get(mode);
+    return {
+        mode: modeLabel ?? "其他模式",
+        depth,
+        profile: profile && profile !== "None" ? profile : "无色彩配置",
+        ready: mode === RGB && bits === EIGHT && profile === PROFILE,
+        canConvert: Boolean(modeLabel) && (bits === EIGHT || bits === SIXTEEN),
+    };
 }
 
 function requireCurrent(id) {
@@ -46,9 +60,51 @@ async function availableMasks(doc) {
     return groups;
 }
 
+async function describeDocument(doc) {
+    const format = documentFormat(doc);
+    return { docId: doc.id, title: doc.title, format, width: doc.width, height: doc.height,
+        masks: format.ready ? await availableMasks(doc) : [], hasSelection: Boolean(doc.selection.bounds) };
+}
+
 async function inspect() {
-    const doc = requireDocument();
-    return { docId: doc.id, title: doc.title, masks: await availableMasks(doc), hasSelection: Boolean(doc.selection.bounds) };
+    return describeDocument(requireDocument());
+}
+
+async function prepareCopy({ docId } = {}) {
+    return core.executeAsModal(async () => {
+        const doc = requireDocument();
+        if (doc.id !== docId) throw Error("当前 Photoshop 文档已切换，请重新扫描");
+        const format = documentFormat(doc);
+        if (format.ready) return describeDocument(doc);
+        if (!format.canConvert) throw Error("请在 Photoshop 中将文档副本转换为 8 位 RGB，再转为 sRGB");
+        const selectionBounds = doc.selection.bounds;
+        const region = selectionBounds ? captureRegion(doc, selectionBounds) : null;
+        const selection = region ? await readRegion(await imaging.getSelection({
+            documentID: doc.id, sourceBounds: region.bounds,
+        }), region.bounds, 1) : null;
+        const copy = await doc.duplicate(`${doc.title} · 衣物美化副本`, false);
+        try {
+            if (copy.mode !== constants.DocumentMode.RGB) await copy.changeMode(constants.ChangeMode.RGB);
+            if (copy.bitsPerChannel !== constants.BitsPerChannelType.EIGHT) copy.bitsPerChannel = constants.BitsPerChannelType.EIGHT;
+            if (copy.colorProfileName !== PROFILE) await copy.convertProfile(PROFILE, constants.Intent.RELATIVECOLORIMETRIC, true, false);
+            if (selection) {
+                const { width, height, bounds: { left, top } } = region;
+                const imageData = await imaging.createImageDataFromBuffer(selection, { width, height, components: 1, colorSpace: "Grayscale" });
+                try {
+                    await imaging.putSelection({ documentID: copy.id, imageData, targetBounds: { left, top }, replace: true });
+                } finally {
+                    imageData.dispose();
+                }
+            }
+            const result = await describeDocument(copy);
+            if (!result.format.ready) throw Error("Photoshop 未能生成 8 位 sRGB 副本");
+            current = null;
+            return result;
+        } catch (error) {
+            await copy.closeWithoutSaving();
+            throw error;
+        }
+    }, { commandName: "衣物美化：创建 8 位 sRGB 副本" });
 }
 
 async function readRegion(response, bounds, channels) {
@@ -112,26 +168,33 @@ function makePreview(rgba, width, height) {
     return { w, h, bytes };
 }
 
+function captureRegion(doc, input) {
+    const bounds = {
+        left: Math.max(0, Math.floor(input?.left ?? 0)), top: Math.max(0, Math.floor(input?.top ?? 0)),
+        right: Math.min(doc.width, Math.ceil(input?.right ?? doc.width)),
+        bottom: Math.min(doc.height, Math.ceil(input?.bottom ?? doc.height)),
+    };
+    const width = bounds.right - bounds.left;
+    const height = bounds.bottom - bounds.top;
+    if (Math.min(width, height) < 8 || width * height > MAX_PIXELS || Math.max(width, height) > 8192) {
+        throw Error(`当前读取范围为 ${width} × ${height}。请用 Photoshop 选框圈住衣物区域，范围至少为 8 × 8，最多 1200 万像素且单边不超过 8192 像素。`);
+    }
+    return { bounds, width, height };
+}
+
 async function read({ docId, layerId } = {}) {
     current = null;
     return core.executeAsModal(async () => {
         const doc = requireDocument();
         if (doc.id !== docId) throw Error("当前 Photoshop 文档已切换，请重新扫描");
+        if (!documentFormat(doc).ready) throw Error("请先在面板中创建 8 位 sRGB 副本");
+        const revision = doc.activeHistoryState?.id;
+        if (!Number.isInteger(revision)) throw Error("无法确认 Photoshop 历史状态");
         if (layerId != null && !(await availableMasks(doc)).some(entry => entry.id === layerId)) {
             throw Error("所选 Photoshop 像素蒙版已移除或停用");
         }
         const input = doc.selection.bounds;
-        const bounds = {
-            left: Math.max(0, Math.floor(input?.left ?? 0)), top: Math.max(0, Math.floor(input?.top ?? 0)),
-            right: Math.min(doc.width, Math.ceil(input?.right ?? doc.width)),
-            bottom: Math.min(doc.height, Math.ceil(input?.bottom ?? doc.height)),
-        };
-        const width = bounds.right - bounds.left;
-        const height = bounds.bottom - bounds.top;
-        if (Math.min(width, height) < 8 || width * height > MAX_PIXELS || Math.max(width, height) > 8192) {
-            throw Error("请框选至少 8 × 8、最多 1200 万像素且单边不超过 8192 像素的区域");
-        }
-        const revision = doc.activeHistoryState.id;
+        const { bounds, width, height } = captureRegion(doc, input);
         const args = { documentID: doc.id, sourceBounds: bounds };
         const rgba = await readRegion(await imaging.getPixels({ ...args, componentSize: 8,
             colorSpace: "RGB", colorProfile: PROFILE, applyAlpha: false }), bounds, 4);
@@ -244,4 +307,4 @@ async function segment({ id, token, points }) {
     }
 }
 
-module.exports = { inspect, read, sampleDetail, apply, segment };
+module.exports = { inspect, prepareCopy, read, sampleDetail, apply, segment };

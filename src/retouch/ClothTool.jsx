@@ -201,11 +201,25 @@ export function ClothTool({ connected }) {
             <p className="wfa-retouch-hint">本阶段支持衣物分割、蒙版编辑和独立图层，去褶处理尚未开放。</p>
             <button type="button" disabled={!connected || busy} onClick={() => run("正在扫描 Photoshop…", async () => {
                 reset(); setDocument(null); setLayerId("");
-                setDocument(await invoke("cloth.inspect"));
-                notify("请选择像素蒙版，或直接读取当前画面和选区。");
+                const scanned = await invoke("cloth.inspect");
+                setDocument(scanned);
+                notify(scanned.format.ready ? "请选择像素蒙版，或直接读取当前画面和选区。" : "已识别当前文档格式。");
             })}>扫描 Photoshop</button>
             {document && <>
-                <p>{document.title} · {document.hasSelection ? "已选区域" : "当前画面"}</p>
+                <p>{document.title} · {document.width} × {document.height} · {document.hasSelection ? "已选区域" : "当前画面"}</p>
+                <p className="wfa-retouch-hint">{document.format.mode} · {document.format.depth ? `${document.format.depth} 位` : "未知位深"} · {document.format.profile}</p>
+            </>}
+            {document && !document.format.ready && <>
+                <p className="wfa-retouch-hint">{document.format.canConvert
+                    ? "创建副本后可在副本中分割和写入蒙版，原文档保持原格式。"
+                    : "请在 Photoshop 中将文档副本转换为 8 位 RGB 和 sRGB，再重新扫描。"}</p>
+                {document.format.canConvert && <button type="button" disabled={busy} onClick={() => run("正在创建 Photoshop 副本…", async () => {
+                    const copy = await invoke("cloth.prepareCopy", { docId: document.docId });
+                    setDocument(copy);
+                    notify("8 位 sRGB 副本已打开。可选择蒙版或读取像素。");
+                })}>创建 8 位 sRGB 副本</button>}
+            </>}
+            {document?.format.ready && <>
                 <label className="wfa-retouch-field">Photoshop 蒙版
                     <select value={layerId} disabled={busy} onChange={event => { setLayerId(event.target.value); reset(); }}>
                         <option value="">不指定图层蒙版</option>
@@ -220,6 +234,7 @@ export function ClothTool({ connected }) {
             <label className="wfa-retouch-field">本地 SAM 配对码
                 <input type="password" value={token} autoComplete="off" disabled={busy} onChange={event => setToken(event.target.value)} />
             </label>
+            <p className="wfa-retouch-hint">在 Windows 开始菜单打开「WF美工助手 · 启动本地 SAM」，保持窗口开启并填入其中的配对码。已有 Photoshop 蒙版或选区时可直接使用。</p>
             <div className="wfa-retouch-actions">
                 <button type="button" disabled={busy || !token.trim() || !edit.points.some(point => point.positive)} onClick={() => segment(edit.points)}>运行 SAM 分割</button>
                 <button type="button" disabled={busy || !source.hasMask} onClick={() => {
