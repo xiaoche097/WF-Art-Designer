@@ -92,10 +92,13 @@ function buildToneBands(rgba, mask, width, height) {
     return { fine, coarse };
 }
 
-function combineToneBands(bands, settings) {
+function combineToneBands(bands, settings, regions) {
     const result = new Float32Array(bands.fine.length);
+    const upper = (settings.upper ?? 100) / 100;
+    const lower = (settings.lower ?? 100) / 100;
     for (let p = 0; p < result.length; p++) {
-        result[p] = Math.max(-48, Math.min(48, (bands.fine[p] * settings.fine + bands.coarse[p] * settings.coarse) / 100));
+        const amount = regions?.[p] === 2 ? lower : upper;
+        result[p] = amount * Math.max(-48, Math.min(48, (bands.fine[p] * settings.fine + bands.coarse[p] * settings.coarse) / 100));
     }
     return result;
 }

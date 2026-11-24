@@ -7,7 +7,7 @@ const PROFILE = "sRGB IEC61966-2.1";
 const ENGINE_URL = "http://127.0.0.1:49321";
 const MAX_PIXELS = 12000000;
 const MAX_PREVIEW_EDGE = 640;
-const LARGE_PREVIEW_EDGE = 1280;
+const LARGE_PREVIEW_EDGE = 960;
 let current;
 let sequence = 0;
 
@@ -247,10 +247,12 @@ function decodeMask(text, length) {
 }
 
 function validateSettings(settings) {
-    if (!settings || ![settings.fine, settings.coarse].every(value => Number.isInteger(value) && value >= 0 && value <= 100)) {
-        throw Error("细褶和粗褶强度必须为 0 到 100");
+    if (!settings) throw Error("缺少衣物美化设置");
+    const { upper = 100, lower = 100, fine, coarse } = settings;
+    if (![upper, lower, fine, coarse].every(value => Number.isInteger(value) && value >= 0 && value <= 100)) {
+        throw Error("衣物美化强度必须为 0 到 100");
     }
-    return { fine: settings.fine, coarse: settings.coarse };
+    return { upper, lower, fine, coarse };
 }
 
 function detailedPreview(source, previewMask = null) {
@@ -263,16 +265,19 @@ function detailedPreview(source, previewMask = null) {
     return { frame, mask };
 }
 
-function getPreview({ id, mask, fromPhotoshop, settings }) {
+function getPreview({ id, mask, regions, fromPhotoshop, settings }) {
     const { source } = requireCurrent(id);
     if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
     const previewMask = mask == null && fromPhotoshop ? null : decodeMask(mask, source.preview.w * source.preview.h);
     const { frame, mask: detailedMask } = detailedPreview(source, previewMask);
+    const regionMap = regions == null ? null : decodeMask(regions, source.preview.w * source.preview.h);
+    const labels = regionMap && resizeMask(regionMap, source.preview.w, source.preview.h, frame.w, frame.h);
     return { width: frame.w, height: frame.h, originalWidth: source.width, originalHeight: source.height,
-        rgba: toBase64(frame.bytes), mask: toBase64(detailedMask), settings: validateSettings(settings) };
+        rgba: toBase64(frame.bytes), mask: toBase64(detailedMask), regions: labels ? toBase64(labels) : null,
+        settings: validateSettings(settings) };
 }
 
-async function apply({ id, mask, fromPhotoshop, strength, settings }) {
+async function apply({ id, mask, regions, fromPhotoshop, strength, settings }) {
     return core.executeAsModal(async ({ hostControl }) => {
         const { doc, source } = requireCurrent(id);
         const { rgba, width, height, bounds, limit, preview } = source;
@@ -284,19 +289,23 @@ async function apply({ id, mask, fromPhotoshop, strength, settings }) {
         const previewMask = mask == null && fromPhotoshop
             ? resizeMask(limit, width, height, preview.w, preview.h)
             : decodeMask(mask, preview.w * preview.h);
+        const previewRegions = regions == null ? null : decodeMask(regions, preview.w * preview.h);
         const outputMask = fromPhotoshop && mask == null
             ? new Uint8Array(limit)
             : constrainMask(resizeMask(previewMask, preview.w, preview.h, width, height), rgba, [limit]);
         if (retouch) {
+            const labels = controls && previewRegions && resizeMask(previewRegions, preview.w, preview.h, width, height);
             for (let p = 0; p < outputMask.length; p++) {
-                if (rgba[p * 4 + 3] !== 255) outputMask[p] = 0;
+                const disabled = controls && (labels?.[p] === 2 ? !controls.lower : !controls.upper);
+                if (disabled || rgba[p * 4 + 3] !== 255) outputMask[p] = 0;
             }
         }
         if (!outputMask.some(Boolean)) throw Error("蒙版为空，没有可写入的区域");
         let pixelData = rgba;
         if (controls) {
             const { frame, mask: detailedMask } = detailedPreview(source, mask == null && fromPhotoshop ? null : previewMask);
-            const field = combineToneBands(buildToneBands(frame.bytes, detailedMask, frame.w, frame.h), controls);
+            const labels = previewRegions && resizeMask(previewRegions, preview.w, preview.h, frame.w, frame.h);
+            const field = combineToneBands(buildToneBands(frame.bytes, detailedMask, frame.w, frame.h), controls, labels);
             pixelData = renderTone(rgba, width, height, field, frame.w, frame.h, outputMask, 100, false);
         } else if (retouch) {
             const previewLimit = resizeMask(limit, width, height, preview.w, preview.h);

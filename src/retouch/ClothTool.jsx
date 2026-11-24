@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "../bridge/uxpBridge.js";
 import { buildToneBands, combineToneBands, renderTone } from "../../plugin/host/retouch/clothTone.js";
 import { findClothes } from "./clothMask.js";
-import { ClothSliders, DEFAULT_CLOTH_SETTINGS } from "./ClothSliders.jsx";
+import { ClothSliders, DEFAULT_CLOTH_SETTINGS, getClothParts } from "./ClothSliders.jsx";
 
 const decode = value => Uint8ClampedArray.from(atob(value), char => char.charCodeAt(0));
 
@@ -66,6 +66,7 @@ export function ClothTool({ connected }) {
     const pending = useRef(false);
 
     const mask = draft || edit?.mask;
+    const parts = useMemo(() => getClothParts(edit?.mask, edit?.regions), [edit]);
     const bands = useMemo(() => source && edit
         ? buildToneBands(source.frame.pixels, edit.mask, source.frame.width, source.frame.height)
         : null, [source, edit]);
@@ -73,8 +74,8 @@ export function ClothTool({ connected }) {
         if (!source) return null;
         const { pixels, width, height } = source.frame;
         return !bands || (!settings.fine && !settings.coarse) || showOriginal ? pixels
-            : renderTone(pixels, width, height, combineToneBands(bands, settings), width, height, mask, 100);
-    }, [source, bands, mask, settings, showOriginal]);
+            : renderTone(pixels, width, height, combineToneBands(bands, settings, edit.regions), width, height, mask, 100);
+    }, [source, bands, edit, mask, settings, showOriginal]);
 
     function notify(text, error = false) {
         setNotice(text ? { text, error } : null);
@@ -131,7 +132,7 @@ export function ClothTool({ connected }) {
                 notify("没找到清晰的衣物区域，可在「高级」中添加蒙版。", true);
                 return;
             }
-            setEdit({ mask: detected, fromPhotoshop: false });
+            setEdit({ ...detected, fromPhotoshop: false });
             notify(null);
         } catch (error) {
             console.warn("[WF] Clothing recognition failed", error);
@@ -203,29 +204,39 @@ export function ClothTool({ connected }) {
         },
         onPointerMove: event => { if (stroke.current) paint(event); },
         onPointerUp: () => {
-            if (stroke.current) changeMask({ mask: stroke.current.mask, fromPhotoshop: false });
+            if (stroke.current) changeMask({ mask: stroke.current.mask, regions: edit?.regions, fromPhotoshop: false });
             stroke.current = null;
             setDraft(null);
         },
         onPointerCancel: () => { stroke.current = null; setDraft(null); },
     };
 
+    function getRequest() {
+        return { id: source.id, mask: edit.fromPhotoshop ? null : encode(edit.mask),
+            regions: edit.regions ? encode(edit.regions) : null, fromPhotoshop: edit.fromPhotoshop, settings };
+    }
+
+    async function writeLayer(request) {
+        await invoke("cloth.apply", request);
+        setApplied(true);
+        setBrush(null);
+        notify("已应用到新的 Photoshop 图层。");
+    }
+
     function openPreview() {
-        run(null, async () => {
-            const request = {
-                id: source.id, mask: edit.fromPhotoshop ? null : encode(edit.mask),
-                fromPhotoshop: edit.fromPhotoshop, settings,
-            };
+        run("正在打开大图预览…", async () => {
+            const request = getRequest();
             const confirmed = await invoke("cloth.previewDialog", request);
-            if (!confirmed) return;
+            if (!confirmed) { notify(null); return; }
             setSettings(confirmed);
             notify("正在写入衣物美化图层…");
-            await invoke("cloth.apply", { ...request, settings: confirmed });
-            setApplied(true);
-            setBrush(null);
-            notify("已应用到新的 Photoshop 图层。");
+            await writeLayer({ ...request, settings: confirmed });
         });
     }
+
+    const blocked = !edit || busy || applied || Boolean(draft);
+    const canWrite = (settings.fine || settings.coarse) &&
+        ((parts.upper || parts.dress) && settings.upper || parts.lower && settings.lower);
 
     return <section className="wfa-retouch-card wfa-cloth-tool" aria-busy={busy}>
         <div className="wfa-retouch-heading">
@@ -239,13 +250,18 @@ export function ClothTool({ connected }) {
             <button type="button" disabled={!connected || busy} onClick={readCurrent}>读取当前文档</button>
         </div>
         {source && <>
-            <ClothSliders settings={settings} disabled={!edit || busy || applied}
+            <ClothSliders settings={settings} parts={parts} disabled={!edit || busy || applied}
                 onChange={(key, value) => {
                     setSettings(current => current[key] === value ? current : { ...current, [key]: value });
                     setShowOriginal(false);
                 }} />
-            <button type="button" className="wfa-retouch-primary" disabled={!edit || busy || applied || Boolean(draft)}
-                onClick={openPreview}>{applied ? "已应用到图层" : "打开大图预览"}</button>
+            <div className="wfa-retouch-actions">
+                <button type="button" disabled={blocked} onClick={openPreview}>打开大图预览</button>
+                <button type="button" className="wfa-retouch-primary" disabled={blocked || !canWrite}
+                    onClick={() => run("正在写入衣物美化图层…", () => writeLayer(getRequest()))}>
+                    {applied ? "已生成图层" : "生成图层到 Photoshop"}
+                </button>
+            </div>
             <Preview frame={source.frame} pixels={pixels} overlay={brush && mask} interactive={Boolean(brush && !applied)} handlers={handlers} />
             {!applied && <details className="wfa-cloth-advanced" onToggle={event => {
                 if (!event.currentTarget.open) setBrush(null);

@@ -53,6 +53,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid #a5caff; outline-
 .cloth-inspector { min-width: 0; overflow: auto; padding: 16px 14px; border-left: 1px solid #323c50; }
 .cloth-inspector h1 { margin: 0 0 15px; font-size: 17px; }
 .wfa-cloth-sliders { display: grid; gap: 8px; }
+.cloth-mask-toggle { display: flex; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.cloth-mask-key { margin: -4px 0 10px; color: #c1d0e9; font-size: 12px; }
 .wfa-cloth-strength { display: grid; gap: 3px; margin-bottom: 12px; }
 .wfa-cloth-strength span { display: flex; justify-content: space-between; gap: 8px; }
 .wfa-cloth-strength output, .cloth-footer span { color: #c1d0e9; font-variant-numeric: tabular-nums; }

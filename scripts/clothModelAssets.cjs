@@ -3,9 +3,9 @@ const { createHash, randomUUID } = require("node:crypto");
 const os = require("node:os");
 const path = require("node:path");
 
-const model = "selfie_multiclass_256x256.tflite";
-const expected = "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0";
-const modelUrl = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/" + model;
+const model = "schp-atr-18-int8-static.onnx";
+const expected = "4420d8db8c1f266967c89485786b01209f6d405f320fc0f87e8ced49392cefb5";
+const modelUrl = "https://huggingface.co/pirocheto/schp-atr-18/resolve/1ddc548f48cc1435a505e565ff5f56dcfe6017e3/onnx/" + model;
 const isValid = bytes => Boolean(bytes && createHash("sha256").update(bytes).digest("hex") === expected);
 
 async function getModel() {
@@ -19,7 +19,7 @@ async function getModel() {
     const response = await fetch(modelUrl, { signal: AbortSignal.timeout(90000) });
     if (!response.ok) throw new Error(`Could not download clothing model (HTTP ${response.status})`);
     const bytes = Buffer.from(await response.arrayBuffer());
-    if (!isValid(bytes)) throw new Error("Clothing model SHA-256 does not match the pinned Google model");
+    if (!isValid(bytes)) throw new Error("Clothing model SHA-256 does not match the pinned SCHP model");
     await fs.mkdir(cache, { recursive: true });
     const temporary = file + "." + randomUUID();
     try {
@@ -38,13 +38,10 @@ class ClothModelAssets {
             compilation.hooks.processAssets.tapPromise({
                 name, stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONS,
             }, async () => {
-                const vision = path.dirname(require.resolve("@mediapipe/tasks-vision"));
+                const runtimeFolder = path.dirname(require.resolve("onnxruntime-web/wasm"));
                 const { RawSource } = compiler.webpack.sources;
-                const files = [
-                    "vision_wasm_internal.js", "vision_wasm_internal.wasm",
-                    "vision_wasm_nosimd_internal.js", "vision_wasm_nosimd_internal.wasm",
-                ];
-                const [modelBytes, ...runtime] = await Promise.all([getModel(), ...files.map(file => fs.readFile(path.join(vision, "wasm", file)))]);
+                const files = ["ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm"];
+                const [modelBytes, ...runtime] = await Promise.all([getModel(), ...files.map(file => fs.readFile(path.join(runtimeFolder, file)))]);
                 // Adobe local WebView uses file URLs. Its script loader can read
                 // packaged resources even when fetch() cannot read local files.
                 const emitBytes = (file, bytes) => compilation.emitAsset("cloth-model/" + file + ".packed.js",
