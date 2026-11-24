@@ -27,7 +27,8 @@ import {
 import { readCompatLocalStorage, removeCompatLocalStorage } from "../utils/storageKeyCompat.js";
 import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js";
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
-import { GEMINI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
+import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
+import { resolveModelImageSelection } from "./imageModelOptions.js";
 import { CUSTOM, EMPTY_PROFILE, ZHIYING, ZhiyingAccountSettings } from "./ZhiyingAccountSettings.jsx";
 import { DEFAULT_BANANA_PROMPT_PRESET_FILES } from "./defaultBananaPromptPresetBundle.js";
 import "../components/WorkPanel/WorkPanel.css";
@@ -442,7 +443,7 @@ function BananaTopBar({ supplier, loading, onRefresh, isSettingsOpen, onToggleVi
             {helpOpen && <div className="xl-popup-overlay" onClick={() => setHelpOpen(false)}><div className="xl-popup-dialog rh-help-dialog" role="dialog" aria-modal="true" aria-label="织影使用说明" onClick={(event) => event.stopPropagation()}>
                 <div className="xl-popup-icon rh-help-icon">?</div>
                 <div className="xl-popup-title">织影使用说明</div>
-                <div className="xl-popup-body rh-help-body"><p>插件可在 Photoshop 内快捷调用配置的生图模型。</p><ol className="rh-help-list"><li>在账户管理填写 API Base URL 和 API Key，刷新模型或手动填写模型 ID。</li><li>选择供应商、模型、尺寸和并发，填写提示词。</li><li>点击捕获图像，点击开始运行，等待回图。</li></ol></div>
+                <div className="xl-popup-body rh-help-body"><p>插件可在 Photoshop 内快捷调用配置的生图模型。</p><ol className="rh-help-list"><li>在账户管理填写 API Base URL 和 API Key，刷新模型或手动填写模型 ID。</li><li>选择模型后，按可用选项设置分辨率和比例，再填写提示词。</li><li>点击捕获图像，点击开始运行，等待回图。</li></ol></div>
                 <div className="xl-popup-actions"><button type="button" className="xl-btn xl-btn-primary" onClick={() => setHelpOpen(false)}>知道了</button></div>
             </div></div>}
         </>
@@ -547,7 +548,8 @@ function BananaHome({ state, actions }) {
     const promptHistoryMenuRef = useRef(null);
     const activeModel = state.profile.model || "";
     const modelOptions = Array.from(new Set([activeModel, ...state.models])).filter(Boolean);
-    const displayModel = modelOptions.includes(activeModel) ? activeModel : modelOptions[0] || "";
+    const defaultImageValue = activeModel ? "模型默认" : "请先选择模型";
+    const { size, aspectRatio, sizes, ratios } = state.imageSelection;
     useEffect(() => {
         if (!paramsOpen) return undefined;
         const onMouseDown = (event) => {
@@ -630,8 +632,13 @@ function BananaHome({ state, actions }) {
         <div ref={paramsMenuRef} className="banana-param-menu banana-param-menu--portal" style={paramMenuStyle}>
             <div className="banana-controls">
                 <CustomSelect label="供应商" value={state.provider} displayValue={state.supplierName} options={state.providerOptions} getItemLabel={(item) => state.providerNames[item]} onChange={actions.setProvider} dropdownPlacement="down" useDropdownPortal />
-                <CustomSelect label="模型" value={displayModel} displayValue={displayModel || "请刷新模型"} options={modelOptions} onChange={actions.setModel} dropdownPlacement="down" useDropdownPortal />
-                {state.profile.protocol === GEMINI_IMAGES && <CustomSelect label="尺寸" value={state.size} options={["1K", "2K", "4K"]} onChange={actions.setSize} dropdownPlacement="down" useDropdownPortal />}
+                <CustomSelect label="模型" value={activeModel} displayValue={activeModel || (modelOptions.length ? "请选择模型" : "请刷新模型")} options={modelOptions} onChange={actions.setModel} dropdownPlacement="down" useDropdownPortal />
+                <CustomSelect label="分辨率" value={size} displayValue={size || defaultImageValue} options={["", ...sizes]}
+                    getItemLabel={(value) => value || "模型默认"} onChange={(value) => actions.setImageOption("size", value)}
+                    disabled={!sizes.length} dropdownPlacement="down" useDropdownPortal />
+                <CustomSelect label="比例" value={aspectRatio} displayValue={aspectRatio || defaultImageValue} options={["", ...ratios]}
+                    getItemLabel={(value) => value || "模型默认"} onChange={(value) => actions.setImageOption("aspectRatio", value)}
+                    disabled={!ratios.length} dropdownPlacement="down" useDropdownPortal />
                 <Stepper label="并发" value={state.concurrency} min={1} max={8} onChange={actions.setConcurrency} />
                 <Stepper label="超时" value={state.timeoutSec} min={60} max={1800} onChange={actions.setTimeoutSec} suffix="s" />
             </div>
@@ -823,19 +830,31 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const cached = modelLists[provider];
     const modelResult = cached?.baseUrl === profile.baseUrl && cached?.protocol === profile.protocol && cached?.apiKey === profile.apiKey ? cached : null;
     const models = modelResult?.models || [];
+    const optionsByModel = modelResult?.byModel;
     const refreshing = modelResult?.pending === true;
     const modelRequestSequence = useRef(0);
-    const updateProfile = (field, value) => {
-        const patch = (current) => ({ ...current, [field]: value });
+    const patchProfile = (patch) => {
         if (provider === ZHIYING) setBuiltInProfile(patch);
         else setSavedProviders((current) => current.map((item) => item.id === provider ? patch(item) : item));
     };
+    const updateProfile = (field, value) => patchProfile(current => ({ ...current, [field]: value }));
     const addProvider = () => {
         const id = "custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
         setSavedProviders((current) => [...(Array.isArray(current) ? current : []), { ...EMPTY_PROFILE, id, name: "自定义 " + (customProfiles.length + 1) }]);
         setProvider(id);
     };
-    const [size, setSize] = usePersistedState("banana_size", "2K");
+    const [previousSize] = usePersistedState("banana_size", "");
+    const modelId = String(profile.model || "").trim();
+    const imageChoice = profile.imageOptionsByModel?.[modelId] ||
+        (profile.protocol === OPENAI_IMAGES ? null : { size: previousSize });
+    const imageSelection = resolveModelImageSelection(optionsByModel?.[modelId], imageChoice, profile.protocol);
+    const setImageOption = (key, value) => {
+        if (!modelId) return;
+        const choice = profile.protocol === OPENAI_IMAGES
+            ? { [key]: value }
+            : { size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, [key]: value };
+        patchProfile(current => ({ ...current, imageOptionsByModel: { ...current.imageOptionsByModel, [modelId]: choice } }));
+    };
     const [concurrency, setConcurrency] = usePersistedState("banana_concurrency", 1);
     const [timeoutSec, setTimeoutSec] = usePersistedState("banana_timeout_sec", 600);
     const [prompt, setPrompt] = useState("");
@@ -889,7 +908,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const requestId = ++modelRequestSequence.current;
         setModelLists((current) => ({
             ...current,
-            [provider]: { baseUrl: config.baseUrl, protocol: config.protocol, apiKey: config.apiKey, requestId, models, pending: true },
+            [provider]: { baseUrl: config.baseUrl, protocol: config.protocol, apiKey: config.apiKey, requestId, models, byModel: optionsByModel, pending: true },
         }));
         const finish = (patch) => {
             setModelLists((current) => current[provider]?.requestId === requestId
@@ -898,7 +917,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         };
         try {
             const result = await fetchBananaModels(config);
-            finish({ models: result.models });
+            finish({ models: result.models, byModel: result.byModel });
             showProbeResult({ ok: true, latencyMs: result.latencyMs, label: result.endpointLabel });
             pushStatus(result.models.length ? "模型列表已刷新" : "未发现模型，可手动填写模型 ID", 3500);
         } catch (error) {
@@ -906,7 +925,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             finish({ error: message });
             pushStatus("拉取模型失败：" + message, 6000);
         }
-    }, [config, models, provider, pushStatus, refreshing, showProbeResult]);
+    }, [config, models, optionsByModel, provider, pushStatus, refreshing, showProbeResult]);
 
     const clearCapture = useCallback((slotKey = BANANA_MAIN_IMAGE_SLOT) => {
         const key = slotKey || BANANA_MAIN_IMAGE_SLOT;
@@ -1048,7 +1067,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const timeoutMs = Math.max(60, Number(timeoutSec) || 600) * 1000;
         const placeContext = normalizePlaceContext({ docId: image?.docId, bounds: image?.bounds }) || await recordPlaceContext();
         const promptSnapshot = bananaPromptWithImageLabels(prompt, imageEntries, multiImageMode);
-        const task = { model, size, prompt: promptSnapshot, timeoutMs };
+        const task = { model, size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, prompt: promptSnapshot, timeoutMs };
         setPromptHistory((items) => addPromptHistoryItem(items, prompt));
         setPrompt("");
         cancelRefs.current[runId] = false;
@@ -1111,7 +1130,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             delete cancelRefs.current[runId];
             releaseSubmitLock();
         }
-    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, size, supplierName, timeoutSec, updateRun]);
+    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
 
     const dismiss = useCallback((id) => {
         cancelRefs.current[id] = true;
@@ -1133,8 +1152,8 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const retryQueue = useCallback((platform, id) => onRetrySharedPlace ? onRetrySharedPlace(platform, id) : retryPlace(id), [onRetrySharedPlace, retryPlace]);
     let endpointLabel = "未配置";
     try { endpointLabel = new URL(profile.baseUrl).host; } catch {}
-    const state = { provider, profile, supplierName, providerOptions, providerNames, models, size, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
-    const actions = { setProvider, setModel: (value) => updateProfile("model", value), setSize, setConcurrency, setTimeoutSec, setPrompt, setMultiImageMode, savePromptPreset, deletePromptPreset, refresh, capture, clearCapture, run, dismiss: dismissQueue, retryPlace: retryQueue };
+    const state = { provider, profile, supplierName, providerOptions, providerNames, models, imageSelection, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
+    const actions = { setProvider, setModel: (value) => updateProfile("model", value), setImageOption, setConcurrency, setTimeoutSec, setPrompt, setMultiImageMode, savePromptPreset, deletePromptPreset, refresh, capture, clearCapture, run, dismiss: dismissQueue, retryPlace: retryQueue };
     return <>
         {warningDialog}
         <BananaTopBar supplier={supplierName} loading={refreshing} onRefresh={refresh} isSettingsOpen={!isHome} onToggleView={() => setPage((current) => current === "home" ? "settings" : "home")} />

@@ -1,4 +1,5 @@
 import { hostFetch, hostFetchFormDataMultiFiles } from "../bridge/hostNetwork.js";
+import { readModelImageOptions } from "./imageModelOptions.js";
 
 export const GEMINI_IMAGES = "gemini";
 export const OPENAI_IMAGES = "openai";
@@ -54,10 +55,13 @@ export async function fetchBananaModels(config) {
     const json = responseJson(response, apiKey);
     const list = protocol === OPENAI_IMAGES ? json.data : json.models;
     if (!Array.isArray(list)) throw new Error("供应商未返回模型列表，可在账户管理中手动填写模型 ID");
-    const ids = list.map((item) => String(item?.id || item?.name || "").replace(/^models\//, "").trim()).filter(Boolean);
+    const byModel = Object.fromEntries(list.flatMap(item => {
+        const id = String(typeof item === "string" ? item : item?.id || item?.name || "").replace(/^models\//, "").trim();
+        return id ? [[id, readModelImageOptions(item, id, protocol)]] : [];
+    }));
     const imageModel = /image|banana|flux|imagen|seedream/i;
-    const models = [...new Set(ids)].sort((left, right) => Number(imageModel.test(right)) - Number(imageModel.test(left)));
-    return { models, endpointLabel: checked.endpointLabel, latencyMs: Date.now() - start };
+    const models = Object.keys(byModel).sort((left, right) => Number(imageModel.test(right)) - Number(imageModel.test(left)));
+    return { models, byModel, endpointLabel: checked.endpointLabel, latencyMs: Date.now() - start };
 }
 
 function dataImage(base64, mimeType = "image/png") {
@@ -78,12 +82,16 @@ async function runGemini(config, task, images) {
         { text: task.prompt },
         ...images.map((image) => ({ inlineData: { mimeType: image.mimeType || "image/png", data: image.base64 } })),
     ];
+    const imageConfig = {
+        ...(task.size ? { imageSize: task.size } : {}),
+        ...(task.aspectRatio ? { aspectRatio: task.aspectRatio } : {}),
+    };
     const response = await hostFetch(`${config.baseUrl}/models/${encodeURIComponent(task.model)}:generateContent`, {
         method: "POST",
         headers: headers(config),
         body: JSON.stringify({
             contents: [{ role: "user", parts }],
-            generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { imageSize: task.size } },
+            generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...(Object.keys(imageConfig).length ? { imageConfig } : {}) },
         }),
         timeoutMs: task.timeoutMs,
     });
@@ -92,7 +100,7 @@ async function runGemini(config, task, images) {
 
 async function runOpenAi(config, task, images) {
     const { baseUrl, apiKey } = config;
-    const fields = { model: task.model, prompt: task.prompt, n: 1 };
+    const fields = { model: task.model, prompt: task.prompt, n: 1, ...(task.size ? { size: task.size } : {}) };
     const response = images.length
         ? await hostFetchFormDataMultiFiles(
             `${baseUrl}/images/edits`,
