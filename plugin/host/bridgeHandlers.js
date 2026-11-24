@@ -1640,6 +1640,9 @@ export function setupBridge(webviewEl) {
                 case "cloth.inspect":
                     result = await clothHost.inspect();
                     break;
+                case "cloth.openImage":
+                    result = await clothHost.openImage();
+                    break;
                 case "cloth.prepareCopy":
                     result = await clothHost.prepareCopy(args[0]);
                     break;

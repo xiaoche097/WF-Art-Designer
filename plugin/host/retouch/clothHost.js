@@ -1,5 +1,6 @@
 const { app, action, core, imaging, constants } = require("photoshop");
 const { constrainMask, resizeMask } = require("./clothComposite");
+const { buildToneField, renderTone } = require("./clothTone");
 const { toBase64 } = require("./retouchHost");
 
 const PROFILE = "sRGB IEC61966-2.1";
@@ -68,6 +69,16 @@ async function describeDocument(doc) {
 
 async function inspect() {
     return describeDocument(requireDocument());
+}
+
+async function openImage() {
+    const { storage } = require("uxp");
+    const file = await storage.localFileSystem.getFileForOpening({ types: ["jpg", "jpeg", "png", "webp", "tif", "tiff", "psd", "psb"] });
+    if (!file) return null;
+    return core.executeAsModal(async () => {
+        const doc = await app.open(file);
+        return describeDocument(doc);
+    }, { commandName: "衣物美化：打开图片" });
 }
 
 async function prepareCopy({ docId } = {}) {
@@ -234,28 +245,47 @@ function decodeMask(text, length) {
     return bytes;
 }
 
-async function apply({ id, mask, fromPhotoshop }) {
+async function apply({ id, mask, fromPhotoshop, strength }) {
     return core.executeAsModal(async ({ hostControl }) => {
         const { doc, source } = requireCurrent(id);
         const { rgba, width, height, bounds, limit, preview } = source;
+        const retouch = strength !== undefined;
+        if (retouch && (!Number.isInteger(strength) || strength < 1 || strength > 100)) throw Error("美化强度必须为 1 到 100");
         if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
+        const previewMask = mask == null && fromPhotoshop
+            ? resizeMask(limit, width, height, preview.w, preview.h)
+            : decodeMask(mask, preview.w * preview.h);
         const outputMask = fromPhotoshop && mask == null
-            ? limit
-            : constrainMask(resizeMask(decodeMask(mask, preview.w * preview.h), preview.w, preview.h, width, height), rgba, [limit]);
+            ? new Uint8Array(limit)
+            : constrainMask(resizeMask(previewMask, preview.w, preview.h, width, height), rgba, [limit]);
+        if (retouch) {
+            for (let p = 0; p < outputMask.length; p++) {
+                if (rgba[p * 4 + 3] !== 255) outputMask[p] = 0;
+            }
+        }
         if (!outputMask.some(Boolean)) throw Error("蒙版为空，没有可写入的区域");
-        const history = await hostControl.suspendHistory({ documentID: doc.id, name: "衣物美化：写入分割副本" });
+        let pixelData = rgba;
+        if (retouch) {
+            const previewLimit = resizeMask(limit, width, height, preview.w, preview.h);
+            const field = buildToneField(preview.bytes, constrainMask(previewMask, preview.bytes, [previewLimit]), preview.w, preview.h);
+            pixelData = renderTone(rgba, width, height, field, preview.w, preview.h, outputMask, strength, false);
+            if (pixelData.every((value, index) => value === rgba[index])) throw Error("当前区域或强度没有可见变化，请调整强度或蒙版");
+        }
+        const name = retouch ? `衣物美化 · ${strength}%` : "衣物美化 · 分割副本";
+        const history = await hostControl.suspendHistory({ documentID: doc.id, name });
         let success = false, frame, gray;
         try {
             const top = doc.layers[0];
-            const layer = await doc.createPixelLayer({ name: "衣物美化 · 分割副本" });
+            const layer = await doc.createPixelLayer({ name });
             if (top && doc.layers[0].id !== layer.id) await layer.move(top, constants.ElementPlacement.PLACEBEFORE);
             layer.visible = false;
             const targetBounds = { left: bounds.left, top: bounds.top };
-            frame = await imaging.createImageDataFromBuffer(rgba, { width, height, components: 4,
+            frame = await imaging.createImageDataFromBuffer(pixelData, { width, height, components: 4,
                 colorSpace: "RGB", colorProfile: PROFILE, chunky: true });
             await imaging.putPixels({ documentID: doc.id, layerID: layer.id, imageData: frame, targetBounds });
             gray = await imaging.createImageDataFromBuffer(outputMask, { width, height, components: 1, colorSpace: "Grayscale", chunky: false });
             await imaging.putLayerMask({ documentID: doc.id, layerID: layer.id, imageData: gray, kind: "user", replace: true, targetBounds });
+            if (retouch) layer.visible = true;
             success = true;
             return { layerId: layer.id };
         } finally {
@@ -307,4 +337,4 @@ async function segment({ id, token, points }) {
     }
 }
 
-module.exports = { inspect, prepareCopy, read, sampleDetail, apply, segment };
+module.exports = { inspect, openImage, prepareCopy, read, sampleDetail, apply, segment };

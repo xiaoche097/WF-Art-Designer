@@ -63,8 +63,14 @@
 .wfa-retouch-reference { position: relative; }
 .wfa-retouch-reference canvas { cursor: crosshair; touch-action: none; }
 .wfa-retouch canvas.wfa-cloth-preview { cursor: crosshair; touch-action: none; }
-.wfa-cloth-detail { max-height: 280px; overflow: auto; }
-.wfa-retouch canvas.wfa-cloth-native { max-width: none; }
+.wfa-cloth-tool > .wfa-retouch-actions > button { flex: 1 1 120px; min-height: 40px; }
+.wfa-cloth-tool > .wfa-retouch-primary { min-height: 40px; }
+.wfa-cloth-strength { display: grid; gap: 3px; margin-block: 4px 2px; }
+.wfa-cloth-strength span { display: flex; justify-content: space-between; font-weight: 600; }
+.wfa-cloth-strength output { color: #b6cdfc; font-variant-numeric: tabular-nums; }
+.wfa-cloth-strength input[type="range"] { inline-size: 100%; min-height: 30px; margin: 0; accent-color: #a3bef4; }
+.wfa-cloth-advanced summary { cursor: pointer; padding-block: 8px; }
+.wfa-cloth-advanced .wfa-retouch-actions + .wfa-retouch-actions { margin-top: 6px; }
 .wfa-retouch-region { position: absolute; pointer-events: none; box-sizing: border-box; border: 1px solid #b9d6ff; box-shadow: 0 0 0 1px #152441; }
 .wfa-retouch-notice { padding: 7px 9px; border-radius: 5px; background: rgba(128, 143, 168, .14); }
 .wfa-retouch [data-error], .wfa-retouch [data-level="error"] strong { color: #e98278; }

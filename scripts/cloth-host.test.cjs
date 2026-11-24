@@ -2,6 +2,35 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { test } = require("node:test");
 const { composite, constrainMask } = require("../plugin/host/retouch/clothComposite");
+const { buildToneField, renderTone } = require("../plugin/host/retouch/clothTone");
+
+test("clothing intensity lifts fold shadows without changing alpha or unmasked pixels", () => {
+    const width = 160, height = 100;
+    const mask = new Uint8Array(width * height);
+    const rgba = new Uint8Array(mask.length * 4);
+    for (let y = 0, p = 0; y < height; y++) {
+        for (let x = 0; x < width; x++, p++) {
+            const value = 175 - (Math.abs(x - 80) <= 2 ? 25 : 0) + (y % 2 ? 6 : 0);
+            rgba.set([value + 15, value, value - 15, x === 60 ? 100 : 255], p * 4);
+            if (x > 20 && x < 140) mask[p] = 255;
+        }
+    }
+    const field = buildToneField(rgba, mask, width, height);
+    const at = (x, y) => (y * width + x) * 4;
+    const slight = renderTone(rgba, width, height, field, width, height, mask, 30);
+    const strong = renderTone(rgba, width, height, field, width, height, mask, 100);
+    assert.deepEqual(renderTone(rgba, width, height, field, width, height, mask, 0), rgba);
+    assert.ok(strong[at(80, 48)] > slight[at(80, 48)]);
+    assert.ok(slight[at(80, 48)] > rgba[at(80, 48)]);
+    assert.ok(strong[at(80, 49)] - strong[at(80, 48)] >= 6);
+    assert.equal(strong[at(80, 48)] - strong[at(80, 48) + 1], 15);
+    for (let p = 0; p < mask.length; p++) {
+        assert.equal(strong[p * 4 + 3], rgba[p * 4 + 3]);
+        if (!mask[p] || rgba[p * 4 + 3] !== 255) {
+            assert.deepEqual(strong.subarray(p * 4, p * 4 + 4), rgba.subarray(p * 4, p * 4 + 4));
+        }
+    }
+});
 
 test("P0 compositor preserves source alpha, hidden RGB and all unmasked bytes", () => {
     const original = Uint8Array.of(1, 2, 3, 255, 10, 20, 30, 117, 70, 80, 90, 0, 9, 8, 7, 250);
@@ -40,7 +69,7 @@ test("P0/P1 bridge offsets, soft mask, result layer and stale snapshot guard", a
         async createPixelLayer({ name }) {
             const layer = { id: 6 + resultLayers.length, name, visible: true };
             resultLayers.push(layer);
-            doc.layers.unshift(layer);
+            this.layers.unshift(layer);
             return layer;
         },
     };
@@ -125,6 +154,14 @@ test("P0/P1 bridge offsets, soft mask, result layer and stale snapshot guard", a
     assert.deepEqual(copy.masks, doc.layers.map(({ id, name }) => ({ id, name })));
     assert.deepEqual([doc.mode, doc.bitsPerChannel, doc.colorProfileName], ["cmyk", 16, "CMYK fixture"]);
     assert.equal((await host.read({ docId: copy.docId, layerId: target.id })).width, 8);
+    for (let p = 0; p < 64; p++) rgba[p * 4 + 3] = 255;
+    for (let y = 2; y < 6; y++) rgba.set([96, 96, 96, 255], (y * 8 + 3) * 4);
+    const beauty = await host.read({ docId: copy.docId, layerId: target.id });
+    await assert.rejects(host.apply({ id: beauty.id, fromPhotoshop: true, strength: 0 }), /美化强度/);
+    await host.apply({ id: beauty.id, fromPhotoshop: true, strength: 100 });
+    assert.equal(resultLayers.at(-1).name, "衣物美化 · 100%");
+    assert.equal(resultLayers.at(-1).visible, true);
+    assert.notDeepEqual(writePixels.imageData.data, rgba);
     mock.app.activeDocument = doc;
     doc.mode = "rgb";
     doc.bitsPerChannel = 8;

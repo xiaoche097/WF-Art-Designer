@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const ClothModelAssets = require("./scripts/clothModelAssets.cjs");
 const CleanWebpackPluginModule = require("clean-webpack-plugin");
 const CleanWebpackPlugin = CleanWebpackPluginModule.CleanWebpackPlugin || CleanWebpackPluginModule;
 
@@ -111,7 +112,7 @@ const appConfig = {
         },
     },
     module: { rules: commonRules },
-    plugins: [new CopyPluginAssets({ from: "plugin", to: "." })],
+    plugins: [new CopyPluginAssets({ from: "plugin", to: "." }), new ClothModelAssets()],
 };
 
 module.exports = (env = {}) => {
@@ -125,6 +126,7 @@ module.exports = (env = {}) => {
             new CopyPluginAssets({ from: "plugin/icons", to: "icons" }),
             new CopyPluginAssets({ from: "plugin/voices", to: "voices" }),
             new CopyPluginAssets({ from: "plugin/docs", to: "docs" }),
+            new ClothModelAssets(),
         ],
     };
 };
