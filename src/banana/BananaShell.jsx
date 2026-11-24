@@ -29,6 +29,7 @@ import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js"
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
 import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
 import { resolveModelImageSelection } from "./imageModelOptions.js";
+import { imageModelKind } from "./imageModelFilter.js";
 import { CUSTOM, EMPTY_PROFILE, ZHIYING, ZhiyingAccountSettings } from "./ZhiyingAccountSettings.jsx";
 import { DEFAULT_BANANA_PROMPT_PRESET_FILES } from "./defaultBananaPromptPresetBundle.js";
 import "../components/WorkPanel/WorkPanel.css";
@@ -546,7 +547,7 @@ function BananaHome({ state, actions }) {
     const promptPresetMenuRef = useRef(null);
     const promptHistoryBtnRef = useRef(null);
     const promptHistoryMenuRef = useRef(null);
-    const activeModel = state.profile.model || "";
+    const activeModel = state.modelId;
     const modelOptions = Array.from(new Set([activeModel, ...state.models])).filter(Boolean);
     const defaultImageValue = activeModel ? "模型默认" : "请先选择模型";
     const { size, aspectRatio, sizes, ratios } = state.imageSelection;
@@ -844,7 +845,10 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         setProvider(id);
     };
     const [previousSize] = usePersistedState("banana_size", "");
-    const modelId = String(profile.model || "").trim();
+    const selectedModel = String(profile.model || "").trim();
+    const modelRejected = !models.includes(selectedModel) &&
+        (modelResult?.excludedModels?.includes(selectedModel) === true || imageModelKind(selectedModel) === "non-image");
+    const modelId = modelRejected ? "" : selectedModel;
     const imageChoice = profile.imageOptionsByModel?.[modelId] ||
         (profile.protocol === OPENAI_IMAGES ? null : { size: previousSize });
     const imageSelection = resolveModelImageSelection(optionsByModel?.[modelId], imageChoice, profile.protocol);
@@ -908,7 +912,8 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const requestId = ++modelRequestSequence.current;
         setModelLists((current) => ({
             ...current,
-            [provider]: { baseUrl: config.baseUrl, protocol: config.protocol, apiKey: config.apiKey, requestId, models, byModel: optionsByModel, pending: true },
+            [provider]: { baseUrl: config.baseUrl, protocol: config.protocol, apiKey: config.apiKey, requestId,
+                models, byModel: optionsByModel, excludedModels: modelResult?.excludedModels, pending: true },
         }));
         const finish = (patch) => {
             setModelLists((current) => current[provider]?.requestId === requestId
@@ -917,15 +922,15 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         };
         try {
             const result = await fetchBananaModels(config);
-            finish({ models: result.models, byModel: result.byModel });
+            finish({ models: result.models, byModel: result.byModel, excludedModels: result.excludedModels });
             showProbeResult({ ok: true, latencyMs: result.latencyMs, label: result.endpointLabel });
-            pushStatus(result.models.length ? "模型列表已刷新" : "未发现模型，可手动填写模型 ID", 3500);
+            pushStatus(result.models.length ? `已拉取 ${result.models.length} 个图像模型` : "未识别到图像模型，请检查供应商或手动填写图像模型 ID", 3500);
         } catch (error) {
             const message = error?.message || "未能读取供应商的模型列表";
             finish({ error: message });
             pushStatus("拉取模型失败：" + message, 6000);
         }
-    }, [config, models, optionsByModel, provider, pushStatus, refreshing, showProbeResult]);
+    }, [config, models, optionsByModel, modelResult?.excludedModels, provider, pushStatus, refreshing, showProbeResult]);
 
     const clearCapture = useCallback((slotKey = BANANA_MAIN_IMAGE_SLOT) => {
         const key = slotKey || BANANA_MAIN_IMAGE_SLOT;
@@ -1001,9 +1006,9 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     }, []);
 
     const run = useCallback(async () => {
-        const model = String(config.model || "").trim();
+        const model = modelId;
         if (!prompt.trim()) return pushStatus("请填写提示词", 3500);
-        if (!model) return pushStatus("请先填写或选择模型", 3500);
+        if (!model) return pushStatus("请先填写或选择图像模型", 3500);
         let runConfig;
         try { runConfig = resolveBananaRunConfig(config); }
         catch (error) { return pushStatus(error.message, 3500); }
@@ -1130,7 +1135,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             delete cancelRefs.current[runId];
             releaseSubmitLock();
         }
-    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
+    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
 
     const dismiss = useCallback((id) => {
         cancelRefs.current[id] = true;
@@ -1152,7 +1157,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const retryQueue = useCallback((platform, id) => onRetrySharedPlace ? onRetrySharedPlace(platform, id) : retryPlace(id), [onRetrySharedPlace, retryPlace]);
     let endpointLabel = "未配置";
     try { endpointLabel = new URL(profile.baseUrl).host; } catch {}
-    const state = { provider, profile, supplierName, providerOptions, providerNames, models, imageSelection, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
+    const state = { provider, modelId, supplierName, providerOptions, providerNames, models, imageSelection, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
     const actions = { setProvider, setModel: (value) => updateProfile("model", value), setImageOption, setConcurrency, setTimeoutSec, setPrompt, setMultiImageMode, savePromptPreset, deletePromptPreset, refresh, capture, clearCapture, run, dismiss: dismissQueue, retryPlace: retryQueue };
     return <>
         {warningDialog}
@@ -1163,7 +1168,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
                 <SettingsCard cardClass="rh-config-card banana-account-card" title="账户管理" defaultOpen>
                     <ZhiyingAccountSettings provider={provider} profile={profile} profiles={customProfiles}
                         onSelect={setProvider} onAdd={addProvider} onChange={updateProfile} onRefresh={refresh}
-                        modelResult={modelResult} />
+                        modelResult={modelResult} modelRejected={modelRejected} />
                 </SettingsCard>
                 <ComfySettings props={sharedSettings} workbenchId={RESULT_WORKBENCH_BANANA} productLabel="织影" />
             </div>

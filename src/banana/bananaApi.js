@@ -1,5 +1,6 @@
 import { hostFetch, hostFetchFormDataMultiFiles } from "../bridge/hostNetwork.js";
 import { readModelImageOptions } from "./imageModelOptions.js";
+import { imageModelKind } from "./imageModelFilter.js";
 
 export const GEMINI_IMAGES = "gemini";
 export const OPENAI_IMAGES = "openai";
@@ -55,13 +56,18 @@ export async function fetchBananaModels(config) {
     const json = responseJson(response, apiKey);
     const list = protocol === OPENAI_IMAGES ? json.data : json.models;
     if (!Array.isArray(list)) throw new Error("供应商未返回模型列表，可在账户管理中手动填写模型 ID");
+    const excluded = new Set();
     const byModel = Object.fromEntries(list.flatMap(item => {
         const id = String(typeof item === "string" ? item : item?.id || item?.name || "").replace(/^models\//, "").trim();
-        return id ? [[id, readModelImageOptions(item, id, protocol)]] : [];
+        if (!id) return [];
+        const kind = imageModelKind(id, item);
+        if (kind === "image") return [[id, readModelImageOptions(item, id, protocol)]];
+        if (kind === "non-image") excluded.add(id);
+        return [];
     }));
-    const imageModel = /image|banana|flux|imagen|seedream/i;
-    const models = Object.keys(byModel).sort((left, right) => Number(imageModel.test(right)) - Number(imageModel.test(left)));
-    return { models, byModel, endpointLabel: checked.endpointLabel, latencyMs: Date.now() - start };
+    const models = Object.keys(byModel);
+    const excludedModels = [...excluded].filter(id => !Object.hasOwn(byModel, id));
+    return { models, byModel, excludedModels, endpointLabel: checked.endpointLabel, latencyMs: Date.now() - start };
 }
 
 function dataImage(base64, mimeType = "image/png") {

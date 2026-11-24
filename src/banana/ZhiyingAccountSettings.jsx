@@ -8,12 +8,13 @@ export const EMPTY_PROFILE = Object.freeze({ name: "", baseUrl: "", apiKey: "", 
 
 const VISIBLE_MODEL_LIMIT = 60;
 
-function ModelPicker({ value, result, onSelect, onRefresh }) {
+function ModelPicker({ value, result, rejected, onSelect, onRefresh }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const models = result?.models || [];
     const pending = result?.pending === true;
     const filtered = models.filter((model) => model.toLowerCase().includes(query.trim().toLowerCase()));
+    const selected = rejected ? "" : value;
 
     const refresh = () => {
         setQuery("");
@@ -32,9 +33,9 @@ function ModelPicker({ value, result, onSelect, onRefresh }) {
             <span id="zhiying-model-label" className="banana-provider-field">模型</span>
             <div className="zhiying-model-actions">
                 <button type="button" id="zhiying-model-trigger" className="zhiying-model-current"
-                    aria-label={value ? `选择模型，当前 ${value}` : "选择模型"} title={value || undefined}
+                    aria-label={selected ? `选择图像模型，当前 ${selected}` : "选择图像模型"} title={selected || undefined}
                     aria-expanded={open} aria-controls="zhiying-model-results" onClick={() => setOpen(!open)}>
-                    {value || "选择模型"}
+                    {selected || "选择图像模型"}
                 </button>
                 <button type="button" className="zhiying-fetch-models" disabled={pending}
                     aria-controls="zhiying-model-results" onClick={refresh}>
@@ -52,7 +53,7 @@ function ModelPicker({ value, result, onSelect, onRefresh }) {
                 {result?.error && <p className="zhiying-model-error" role="alert">{result.error}</p>}
                 {!result && <p className="zhiying-model-note">点击「拉取模型」读取供应商的模型列表。</p>}
                 {result && !pending && !result.error && (
-                    <p className="zhiying-model-note" role="status">供应商返回 {models.length} 个模型</p>
+                    <p className="zhiying-model-note" role="status">{models.length ? `找到 ${models.length} 个图像模型` : "未识别到图像模型"}</p>
                 )}
                 {models.length > 0 && (
                     <>
@@ -65,7 +66,7 @@ function ModelPicker({ value, result, onSelect, onRefresh }) {
                             <ul className="zhiying-model-list" aria-label="可选模型">
                                 {filtered.slice(0, VISIBLE_MODEL_LIMIT).map((model) => (
                                     <li key={model}>
-                                        <button type="button" title={model} aria-pressed={model === value} onClick={() => choose(model)}>
+                                        <button type="button" title={model} aria-pressed={model === selected} onClick={() => choose(model)}>
                                             {model}
                                         </button>
                                     </li>
@@ -76,6 +77,7 @@ function ModelPicker({ value, result, onSelect, onRefresh }) {
                     </>
                 )}
             </div>
+            {rejected && <p className="zhiying-model-error" role="status">当前 ID 未识别为图像生成或编辑模型，请重新选择。</p>}
             <details className="zhiying-manual-model">
                 <summary>手动填写模型 ID</summary>
                 <label className="banana-provider-field">模型 ID
@@ -86,7 +88,7 @@ function ModelPicker({ value, result, onSelect, onRefresh }) {
     );
 }
 
-export function ZhiyingAccountSettings({ provider, profile, profiles, onSelect, onAdd, onChange, onRefresh, modelResult }) {
+export function ZhiyingAccountSettings({ provider, profile, profiles, onSelect, onAdd, onChange, onRefresh, modelResult, modelRejected }) {
     const builtIn = provider === ZHIYING;
     const field = (name) => (event) => onChange(name, event.target.value);
 
@@ -125,7 +127,8 @@ export function ZhiyingAccountSettings({ provider, profile, profiles, onSelect, 
                         <span>API Key</span>
                         <RhSecureKeyField value={profile.apiKey} inputLabel="API Key" onValueChange={(value) => onChange("apiKey", value)} placeholder="填写当前供应商的 API Key" />
                     </div>
-                    <ModelPicker key={provider} value={profile.model} result={modelResult} onSelect={(model) => onChange("model", model)} onRefresh={onRefresh} />
+                    <ModelPicker key={provider} value={profile.model} result={modelResult} rejected={modelRejected}
+                        onSelect={(model) => onChange("model", model)} onRefresh={onRefresh} />
                 </div>
             )}
         </div>

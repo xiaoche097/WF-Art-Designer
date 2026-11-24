@@ -29,8 +29,10 @@ test("provider pull and generation send only the selected fields in the required
     globalThis.fetch = async (url, options) => {
         if (url.endsWith("/models")) {
             return Response.json({ models: [
-                { name: "models/image-a", resolutions: ["2K"], ratios: ["4:5"] },
-                { name: "models/image-b", imageConfig: { imageSizes: ["1K"], aspectRatios: ["1:1"] } },
+                { name: "models/image-a", output_modalities: ["image"], resolutions: ["2K"], ratios: ["4:5"] },
+                { name: "models/image-b", task: "text-to-image", imageConfig: { imageSizes: ["1K"], aspectRatios: ["1:1"] } },
+                { name: "models/gemini-3-flash", supportedGenerationMethods: ["generateContent"] },
+                { name: "models/veo-3-image-to-video", output_modalities: ["image", "video"] },
             ] });
         }
         const payload = options.body instanceof FormData ? Object.fromEntries(options.body) : JSON.parse(options.body);
@@ -41,6 +43,8 @@ test("provider pull and generation send only the selected fields in the required
     };
     const config = { baseUrl: "https://provider.example", apiKey: "test-key", protocol: "gemini" };
     const result = await fetchBananaModels(config);
+    assert.deepEqual(result.models, ["image-a", "image-b"]);
+    assert.deepEqual(result.excludedModels, ["gemini-3-flash", "veo-3-image-to-video"]);
     assert.deepEqual(result.byModel, {
         "image-a": { sizes: ["2K"], ratios: ["4:5"] },
         "image-b": { sizes: ["1K"], ratios: ["1:1"] },
@@ -57,4 +61,28 @@ test("provider pull and generation send only the selected fields in the required
     assert.equal(requests[2].payload.aspectRatio, undefined);
     assert.match(requests[3].url, /\/images\/edits$/);
     assert.equal(requests[3].payload.size, "1536x1024");
+});
+
+test("mixed OpenAI-compatible lists keep only identifiable image-output models", async context => {
+    const fetch = globalThis.fetch;
+    context.after(() => { globalThis.fetch = fetch; });
+    globalThis.fetch = async () => Response.json({ data: [
+        { id: "zhiying/doubao-seedream-5-0-pro-260628" },
+        { id: "zhiying/gpt-image-2" },
+        { id: "zhiying/gpt-image-2.5-sunburst" },
+        { id: "zhiying/gpt-image-2.5-flare" },
+        { id: "zhiying/gpt-5", input_modalities: ["image", "text"], output_modalities: ["text"] },
+        { id: "zhiying/kling-image-to-video" },
+        { id: "zhiying/doubao-seedance-2-0" },
+        { id: "zhiying/qwen-vl-image-caption", output_modalities: ["text"] },
+        { id: "zhiying/opaque-alias", capabilities: { image_edit: true } },
+        { id: "zhiying/unknown" },
+    ] });
+    const result = await fetchBananaModels({ baseUrl: "https://provider.example", apiKey: "test-key", protocol: "openai" });
+    assert.deepEqual(result.models, [
+        "zhiying/doubao-seedream-5-0-pro-260628", "zhiying/gpt-image-2", "zhiying/gpt-image-2.5-sunburst",
+        "zhiying/gpt-image-2.5-flare", "zhiying/opaque-alias",
+    ]);
+    assert.deepEqual(Object.keys(result.byModel), result.models);
+    assert.equal(result.excludedModels.length, 4);
 });
