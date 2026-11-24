@@ -3,7 +3,7 @@
   "main": "index.html",
   "id": "WfArtAssistant",
   "name": "WF美工助手",
-  "version": "2.3.9",
+  "version": "2.3.10",
   "host": {
     "minVersion": "25.0.0",
     "app": "PS"
