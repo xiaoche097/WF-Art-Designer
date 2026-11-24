@@ -10,7 +10,7 @@ import { Jimp, JimpMime } from "jimp";
 import * as rhHostHttp from "./runninghubHostHttp.js";
 import { RH_PATH } from "../../src/runninghub/constants.js";
 import { extractDownloadUrlFromData } from "../../src/runninghub/rhUploadResponseParse.js";
-import { PLUGIN_HTTP_USER_AGENT_RH } from "../../src/pluginMeta.js";
+import { PLUGIN_HTTP_USER_AGENT_RH, PLUGIN_VERSION } from "../../src/pluginMeta.js";
 import { isFullCanvasSelBounds } from "./placeQuadraticLayerMask.js";
 import {
     finalizePlaceWithOptionalEdgeFeather,
@@ -1630,6 +1630,13 @@ export function setupBridge(webviewEl) {
                 return;
             }
             switch (method) {
+                case "launcher.panelReady": {
+                    const data = await fs.getDataFolder();
+                    const marker = await data.createFile("launcher-panel-ready.txt", { overwrite: true });
+                    await marker.write(PLUGIN_VERSION, { format: formats.utf8 });
+                    result = { ok: true };
+                    break;
+                }
                 case "cloth.inspect":
                     result = await clothHost.inspect();
                     break;

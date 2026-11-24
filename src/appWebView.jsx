@@ -5,6 +5,7 @@ import "./styles.css";
 import React from "react";
 import ReactDOM from "react-dom";
 import { ensureStorageReady } from "./bridge/persistentStorage.js";
+import { invoke, isInWebView } from "./bridge/uxpBridge.js";
 import { RunninghubShell } from "./runninghub/ui/RunninghubShell.jsx";
 import { installRuntimeLogger } from "./utils/runtimeLogger.js";
 import { StatusProvider } from "./utils/StatusContext.jsx";
@@ -164,7 +165,11 @@ async function preparePanelRuntime() {
 async function startPanel(rootElement) {
     try {
         await preparePanelRuntime();
-        ReactDOM.render(<PanelApp />, rootElement);
+        ReactDOM.render(<PanelApp />, rootElement, () => {
+            if (isInWebView() && rootElement.querySelector(".rh-shell-container")) {
+                invoke("launcher.panelReady").catch(error => console.warn(`${PANEL_LOG} 记录面板启动状态失败:`, error));
+            }
+        });
     } catch (error) {
         console.error(`${PANEL_LOG} 初始化失败:`, error);
         showFallback(rootElement, {

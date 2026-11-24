@@ -3,6 +3,7 @@ const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { pluginDir, registrationCode } = require("./uxp-registration.cjs");
+const { buildLauncher, launcherEntries } = require("./windows-launcher.cjs");
 
 const root = path.resolve(__dirname, "../..");
 const dist = path.join(root, "dist");
@@ -149,6 +150,7 @@ function writeInnoScript({ stageDir, releaseDir, version, installerBaseName }) {
         "",
         "[Files]",
         "Source: \"{#MySourceDir}\\\\*\"; DestDir: \"{app}\"; Flags: ignoreversion recursesubdirs createallsubdirs",
+        ...launcherEntries(releaseDir),
         "",
         "[Code]",
         ...registrationCode,
@@ -276,6 +278,7 @@ function buildInstaller({ stageDir, releaseDir, version, installer }) {
         fs.rmSync(innoScript, { force: true });
         return false;
     }
+    buildLauncher(releaseDir, path.join(stageDir, "icons", "icon.ico"));
     run(iscc, [innoScript], { cwd: releaseDir });
     if (!fs.existsSync(installer)) throw new Error("Inno Setup did not create installer");
     fs.rmSync(innoScript, { force: true });

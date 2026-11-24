@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { pluginDir, registrationCode } = require("./uxp-registration.cjs");
+const { buildLauncher, launcherEntries } = require("./windows-launcher.cjs");
 
 const root = path.resolve(__dirname, "../..");
 const dist = path.join(root, "dist");
@@ -118,6 +119,7 @@ function writeInnoScript() {
         "",
         "[Files]",
         "Source: \"{#MySourceDir}\\\\*\"; DestDir: \"{app}\"; Flags: ignoreversion recursesubdirs createallsubdirs",
+        ...launcherEntries(releaseDir),
         "",
         "[Code]",
         ...registrationCode,
@@ -139,6 +141,7 @@ function buildInstallerIfPossible() {
         console.log("installer script: " + innoScript);
         return false;
     }
+    buildLauncher(releaseDir, path.join(dist, "icons", "icon.ico"));
     run(iscc, [innoScript], { cwd: releaseDir });
     if (!fs.existsSync(installer)) throw new Error("Inno Setup did not create installer");
     writeHash(installer);
