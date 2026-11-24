@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WorkspaceHeader } from "../components/WorkspaceHeader.jsx";
+import { WorkspaceSectionHeader } from "../components/shared/WorkspaceSectionHeader.jsx";
 import { core, app } from "photoshop";
 import { usePersistedState } from "../hooks/usePersistedState.js";
 import {
@@ -490,7 +492,7 @@ const PlayIcon = () => (
     </svg>
 );
 
-function ComfyTopBar({ isSettingsOpen, onToggleView, onRefresh }) {
+function ComfyTopBar({ isSettingsOpen, onToggleView, onRefresh, connected }) {
     const [showHelpPopup, setShowHelpPopup] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const handleOpenXiangongyunUrl = useCallback(async (event) => {
@@ -514,22 +516,19 @@ function ComfyTopBar({ isSettingsOpen, onToggleView, onRefresh }) {
 
     return (
         <>
-            <div className="rh-balance-bar comfy-topbar">
-                <div className="rh-balance-content comfy-topbar-left">
-                    <img src="icons/wf-brand.png" className="rh-balance-icon" alt="WF美工助手" />
-                </div>
-                <div className="rh-balance-bar-right">
-                    <div className="icon-btn" onClick={handleRefresh} title="刷新工作流">
+            <WorkspaceHeader title={isSettingsOpen ? "Comfy UI 设置" : "Comfy UI"} detail={connected ? "已连接" : "未连接"}
+                actions={<>
+                    <button type="button" className="icon-btn" onClick={handleRefresh} title="刷新工作流" aria-label="刷新工作流">
                         <IconRefresh className={refreshing ? "rh-spinning" : ""} />
-                    </div>
-                    <div className="icon-btn rh-help-btn" onClick={() => setShowHelpPopup(true)} title="使用说明">
+                    </button>
+                    <button type="button" className="icon-btn rh-help-btn" onClick={() => setShowHelpPopup(true)} title="使用说明" aria-label="使用说明">
                         <IconHelp />
-                    </div>
-                    <div className="icon-btn" onClick={onToggleView} title={isSettingsOpen ? "返回主页" : "打开设置"}>
+                    </button>
+                    <button type="button" className="icon-btn" onClick={onToggleView} title={isSettingsOpen ? "返回主页" : "打开设置"} aria-label={isSettingsOpen ? "返回主页" : "打开设置"}>
                         {isSettingsOpen ? <IconBack /> : <IconSettings />}
-                    </div>
-                </div>
-            </div>
+                    </button>
+                </>}
+            />
             {showHelpPopup && (
                 <div className="xl-popup-overlay" onClick={() => setShowHelpPopup(false)}>
                     <div className="xl-popup-dialog rh-help-dialog" role="dialog" aria-modal="true" aria-label="Comfy UI 使用说明" onClick={(e) => e.stopPropagation()}>
@@ -696,7 +695,7 @@ function ComfyHome({ state, actions }) {
                 <ComfyWorkflowSelect workflows={state.workflowList} value={state.selectedWorkflowId} onChange={actions.selectWorkflow} disabled={!connected} />
                 <ComfyUrlInput value={state.comfyBaseUrl} onChange={actions.setComfyBaseUrl} />
                 <button type="button" className="rh-work-btn-primary comfy-connect-btn" onClick={actions.connect} disabled={state.connecting}>
-                    {state.connecting ? "链接中" : "链接"}
+                    {state.connecting ? "连接中…" : "连接"}
                 </button>
             </div>
             <div className="rh-run-section">
@@ -714,7 +713,7 @@ function ComfyHome({ state, actions }) {
                     </div>
                 </div>
                 <div className="rh-upload-status-bar">
-                    <div className="rh-status-text">{lowerStatusText}</div>
+                    <div className="rh-status-text" role="status">{lowerStatusText}</div>
                     <div className="rh-progress-bar"><div className="rh-progress-fill" style={{ width: `${running ? progress : 0}%` }} /></div>
                 </div>
             </div>
@@ -732,10 +731,7 @@ function ComfyCaptureCard({ imageRows, pendingUploads, capturingImageKey, onCapt
     const [open, setOpen] = useState(true);
     return (
         <div className={`wfa-card rh-capture-card ${!open ? "is-collapsed" : ""}`}>
-            <div className="card-header" onClick={() => setOpen((v) => !v)}>
-                <span className="header-title"><span className="title-icon">📸</span>捕获图像</span>
-                <div className={`collapse-arrow ${open ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div>
-            </div>
+            <WorkspaceSectionHeader title="捕获图像" open={open} onToggle={() => setOpen(value => !value)} />
             <div className={`card-content ${!open ? "collapsed" : ""}`}>
                 {imageRows.length === 0 ? <p className="rh-field-empty">当前工作流暂无图片输入</p> : imageRows.map((row, index) => (
                     <RhImagePreviewField
@@ -756,10 +752,7 @@ function ComfyParamCard({ paramRows, fieldValues, setField }) {
     const [open, setOpen] = useState(true);
     return (
         <div className={`wfa-card rh-param-card ${!open ? "is-collapsed" : ""}`}>
-            <div className="card-header" onClick={() => setOpen((v) => !v)}>
-                <span className="header-title"><span className="title-icon">⚙️</span>参数设置</span>
-                <div className={`collapse-arrow ${open ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div>
-            </div>
+            <WorkspaceSectionHeader title="参数设置" open={open} onToggle={() => setOpen(value => !value)} />
             <div className={`card-content ${!open ? "collapsed" : ""}`}>
                 <div className="rh-param-card-stack"><div className="rh-work-fields rh-param-fields">
                     {paramRows.length === 0 ? <p className="rh-field-empty">暂无可识别参数</p> : paramRows.map((row, index) => (
@@ -797,10 +790,7 @@ function ComfyQueueCard({ runs, onDismiss, onRetryPlace }) {
     const [copyState, setCopyState] = useState({ id: "", status: "" });
     return (
         <div className={`wfa-card rh-queue-card ${!open ? "is-collapsed" : ""}`}>
-            <div className="card-header" onClick={() => setOpen((v) => !v)}>
-                <span className="header-title"><span className="title-icon">📋</span>任务队列 {runs.length > 0 ? `(${runs.length})` : ""}</span>
-                <div className={`collapse-arrow ${open ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div>
-            </div>
+            <WorkspaceSectionHeader title={`任务队列${runs.length ? ` · ${runs.length}` : ""}`} open={open} onToggle={() => setOpen(value => !value)} />
             <div className={`card-content ${!open ? "collapsed" : ""}`}>
                 <div className="rh-task-queue">
                     {runs.length === 0 ? <div className="rh-task-empty">暂无任务</div> : runs.map((run) => {
@@ -1637,7 +1627,7 @@ export function ComfyShell({
     return (
         <>
             {squareSelectionWarningDialog}
-            <ComfyTopBar isSettingsOpen={!isHome} onToggleView={() => setCurrentPage((p) => p === "home" ? "settings" : "home")} onRefresh={refreshCloudDataAndDefaults} />
+            <ComfyTopBar isSettingsOpen={!isHome} connected={state.comfyConnected} onToggleView={() => setCurrentPage((p) => p === "home" ? "settings" : "home")} onRefresh={refreshCloudDataAndDefaults} />
             <div style={{ flex: 1, minHeight: 0, overflow: "visible", display: isHome ? "flex" : "none", flexDirection: "column", background: "transparent" }}>
                 <ComfyHome state={state} actions={actions} />
             </div>

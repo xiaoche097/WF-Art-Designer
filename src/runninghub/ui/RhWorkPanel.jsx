@@ -5,6 +5,7 @@
  */
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
+import { WorkspaceSectionHeader } from "../../components/shared/WorkspaceSectionHeader.jsx";
 import { core, app } from "photoshop";
 import { RH_DEFAULT_BASE_URL, RH_LIST_ALLOW_EMPTY_SELECTION } from "../constants.js";
 import { fetchAiAppInputs } from "../appDemo.js";
@@ -1879,7 +1880,7 @@ export function RhWorkPanel({
                 </button>
                 
                 <div className="rh-upload-status-bar">
-                    <div className="rh-status-text">
+                    <div className="rh-status-text" role="status">
                         {rhIsRunning ? (rhOpState.statusText || "正在处理...") : (rhOpState.statusText || "就绪")}
                     </div>
                     <div className="rh-progress-bar">
@@ -1892,7 +1893,7 @@ export function RhWorkPanel({
                 
                 {!rhIsRunning &&
                     ((!canLoadDefinition || !webappIdTrim) || loadError || runError) && (
-                        <div className="rh-status-text" style={{ color: "#e74c3c" }}>
+                        <div className={`rh-status-text${loadError || runError ? " wfa-status-alert" : ""}`} role={loadError || runError ? "alert" : "status"}>
                             {loadError ||
                                 runError ||
                                 (!canLoadDefinition
@@ -1904,18 +1905,7 @@ export function RhWorkPanel({
 
             <div className="rh-work-cards">
                 <div className={`wfa-card rh-capture-card ${!cardOpenStates.capture ? "is-collapsed" : ""}`}>
-                    <div 
-                        className="card-header" 
-                        onClick={() => toggleCard("capture")}
-                    >
-                        <span className="header-title">
-                            <span className="title-icon">📸</span>
-                            捕获图像
-                        </span>
-                        <div className={`collapse-arrow ${cardOpenStates.capture ? "expanded" : "collapsed"}`}>
-                            <span className="arrow-icon"></span>
-                        </div>
-                    </div>
+                    <WorkspaceSectionHeader title="捕获图像" open={cardOpenStates.capture} onToggle={() => toggleCard("capture")} />
                     <div className={`card-content ${!cardOpenStates.capture ? "collapsed" : ""}`}>
                         {loadingDef ? (
                             <p className="rh-field-empty">加载中...</p>
@@ -1940,18 +1930,7 @@ export function RhWorkPanel({
                 </div>
 
                 <div className={`wfa-card rh-param-card ${!cardOpenStates.param ? "is-collapsed" : ""}`}>
-                    <div 
-                        className="card-header" 
-                        onClick={() => toggleCard("param")}
-                    >
-                        <span className="header-title">
-                            <span className="title-icon">⚙️</span>
-                            参数设置
-                        </span>
-                        <div className={`collapse-arrow ${cardOpenStates.param ? "expanded" : "collapsed"}`}>
-                            <span className="arrow-icon"></span>
-                        </div>
-                    </div>
+                    <WorkspaceSectionHeader title="参数设置" open={cardOpenStates.param} onToggle={() => toggleCard("param")} />
                     <div className={`card-content ${!cardOpenStates.param ? "collapsed" : ""}`}>
                         <div className="rh-param-card-stack">
                             <div className="rh-work-fields rh-param-fields">
@@ -1975,18 +1954,7 @@ export function RhWorkPanel({
                 </div>
 
                 <div className={`wfa-card rh-queue-card ${!cardOpenStates.queue ? "is-collapsed" : ""}`}>
-                    <div 
-                        className="card-header" 
-                        onClick={() => toggleCard("queue")}
-                    >
-                        <span className="header-title">
-                            <span className="title-icon">📋</span>
-                            任务队列 {taskRunsForQueue.length > 0 ? `(${taskRunsForQueue.length})` : ""}
-                        </span>
-                        <div className={`collapse-arrow ${cardOpenStates.queue ? "expanded" : "collapsed"}`}>
-                            <span className="arrow-icon"></span>
-                        </div>
-                    </div>
+                    <WorkspaceSectionHeader title={`任务队列${taskRunsForQueue.length ? ` · ${taskRunsForQueue.length}` : ""}`} open={cardOpenStates.queue} onToggle={() => toggleCard("queue")} />
                     <div className={`card-content ${!cardOpenStates.queue ? "collapsed" : ""}`}>
                         <div className="rh-task-queue">
                             {taskRunsForQueue.length === 0 ? (

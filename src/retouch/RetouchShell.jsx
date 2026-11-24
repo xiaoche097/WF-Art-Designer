@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke, isInWebView } from "../bridge/uxpBridge.js";
+import { WorkspaceHeader } from "../components/WorkspaceHeader.jsx";
 import { ClothTool } from "./ClothTool.jsx";
 import recolor from "./recolorCore.js";
 import { overlayPreview, readRecolorSample, referenceFromFile } from "./recolorImages.js";
@@ -324,12 +325,7 @@ export function RetouchShell() {
     const [tool, setTool] = useState("recolor");
     const connected = isInWebView();
     return <div className="wfa-retouch">
-        <div className="rh-balance-bar comfy-topbar">
-            <div className="rh-balance-content comfy-topbar-left">
-                <img src="icons/wf-brand.png" className="rh-balance-icon" alt="WF美工助手" />
-                <div className="rh-balance-info"><span className="rh-balance-item">商业精修</span></div>
-            </div>
-        </div>
+        <WorkspaceHeader title="精修工具" />
         <nav className="wfa-retouch-tools" aria-label="精修工具">
             <button type="button" aria-pressed={tool === "recolor"} onClick={() => setTool("recolor")}>批量调色</button>
             <button type="button" aria-pressed={tool === "quality"} onClick={() => setTool("quality")}>成片质检</button>

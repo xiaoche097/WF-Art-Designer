@@ -2,9 +2,9 @@ import React from "react";
 import "./ProductModeButton.css";
 
 export const PRODUCT_MODE_ORDER = Object.freeze([
-    { id: "runninghub", label: "runninghub", title: "RunningHub" },
+    { id: "runninghub", label: "RunningHub", title: "RunningHub" },
     { id: "banana", label: "织影", title: "织影" },
-    { id: "comfy", label: "comfy ui", title: "Comfy UI" },
+    { id: "comfy", label: "Comfy UI", title: "Comfy UI" },
     { id: "retouch", label: "精修工具", title: "精修工具" },
     { id: "settings", label: "设置", title: "设置" },
 ]);
@@ -16,7 +16,7 @@ export function nextProductMode(activeProduct) {
 
 export function ProductModeButton({ activeProduct, onChange }) {
     return (
-        <div className="wfa-product-mode-panel" role="navigation" aria-label="板块切换">
+        <nav className="wfa-product-mode-panel" aria-label="工作区">
             {PRODUCT_MODE_ORDER.map((item) => (
                 <button
                     key={item.id}
@@ -29,6 +29,6 @@ export function ProductModeButton({ activeProduct, onChange }) {
                     {item.label}
                 </button>
             ))}
-        </div>
+        </nav>
     );
 }

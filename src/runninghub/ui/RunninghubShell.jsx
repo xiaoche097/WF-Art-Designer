@@ -61,6 +61,7 @@ import {
     SharedPersonalizationSettingsContent,
 } from "../../components/settings/SharedInteractionSettingsCard.jsx";
 import { ProductModeButton, PRODUCT_MODE_ORDER } from "../../components/ProductModeButton.jsx";
+import { WorkspaceHeader } from "../../components/WorkspaceHeader.jsx";
 import { rhFetchAccountStatus } from "../taskApi.js";
 import { webappIdToCanonicalString, fetchAiAppInputs } from "../appDemo.js";
 import { RH_DEFAULT_BASE_URL } from "../constants.js";
@@ -242,10 +243,8 @@ function RhTopBar({
 
     return (
         <>
-        <div className="rh-balance-bar">
-            <div className="rh-balance-content">
-                <img src="icons/wf-brand.png" className="rh-balance-icon" alt="WF美工助手" />
-                <div className="rh-balance-info">
+        <WorkspaceHeader title={isSettingsOpen ? "RunningHub 设置" : "RunningHub"}
+            detail={<>
                     {accountStatus?.loading && !showBalance && <span className="rh-balance-loading">加载中...</span>}
                     {showBalance ? (
                         <>
@@ -255,14 +254,14 @@ function RhTopBar({
                     ) : (
                         <span className="rh-balance-empty">点击刷新</span>
                     )}
-                </div>
-            </div>
-            <div className="rh-balance-bar-right">
+            </>}
+            actions={<>
                 <button
                     type="button"
                     className={`icon-btn rh-duck-toggle ${duckDecodeEnabled ? "is-on" : ""}`}
                     onClick={onToggleDuckDecode}
                     title={duckDecodeEnabled ? "关闭小黄鸭解码" : "开启小黄鸭解码"}
+                    aria-label="小黄鸭解码"
                     aria-pressed={!!duckDecodeEnabled}
                 >
                     <img src="icons/duck_toggle.png" alt="" className="rh-duck-toggle-img" />
@@ -276,8 +275,8 @@ function RhTopBar({
                 <button type="button" className="icon-btn" onClick={handleSettingsClick} title={isSettingsOpen ? "返回主页" : "打开设置"} aria-label={isSettingsOpen ? "返回主页" : "打开设置"}>
                     {isSettingsOpen ? <IconArrowLeft /> : <IconSettings />}
                 </button>
-            </div>
-        </div>
+            </>}
+        />
             {showHelpPopup && (
                 <div className="xl-popup-overlay" onClick={() => setShowHelpPopup(false)}>
                     <div className="xl-popup-dialog rh-help-dialog" role="dialog" aria-modal="true" aria-label="使用说明" onClick={(e) => e.stopPropagation()}>
@@ -1225,7 +1224,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
 
     return (
         <div
-            className={`rh-shell-container rh-custom-text-color ${themeModeClass}`}
+            className={`rh-shell-container ${textColor && String(textColor).toLowerCase() !== "#ffffff" ? "rh-custom-text-color" : ""} ${themeModeClass}`}
             style={{
                 display: "flex",
                 flexDirection: "column",
@@ -1255,12 +1254,13 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                 </div>
             )}
             <ProductModeButton activeProduct={activeProductMode} onChange={changeProduct} />
-            <div hidden={activeProductMode !== "settings"}>
+            <div className="wfa-workspace" hidden={activeProductMode !== "settings"}>
+                <WorkspaceHeader title="设置" />
                 <div className="rh-settings-wrap settings-container">
                     <PluginUpdateSettingsCard active={activeProductMode === "settings"} />
                 </div>
             </div>
-            <div style={{ display: activeProductMode === "comfy" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column" }}>
+            <div className="wfa-workspace" style={{ display: activeProductMode === "comfy" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column" }}>
                 <ComfyShell
                     activeProduct={activeProductMode}
                     onChangeProduct={changeProduct}
@@ -1311,10 +1311,10 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                     onRegisterTaskActions={registerComfyTaskActions}
                 />
             </div>
-            <div hidden={activeProductMode !== "retouch"}>
+            <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />
             </div>
-            <div className="banana-product-panel" style={{ display: activeProductMode === "banana" ? "flex" : "none", flex: "0 0 auto", minHeight: "100%", flexDirection: "column" }}>
+            <div className="wfa-workspace banana-product-panel" style={{ display: activeProductMode === "banana" ? "flex" : "none", flex: "0 0 auto", minHeight: 0, flexDirection: "column" }}>
                 <BananaShell
                     activeProduct={activeProductMode}
                     onChangeProduct={changeProduct}
@@ -1365,7 +1365,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                     onRegisterTaskActions={registerBananaTaskActions}
                 />
             </div>
-            <div style={{ display: activeProductMode === "runninghub" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column" }}>
+            <div className="wfa-workspace" style={{ display: activeProductMode === "runninghub" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column" }}>
             <RhTopBar
                 isSettingsOpen={!isHome}
                 onToggleView={toggleSettings}

@@ -76,11 +76,13 @@ export function RhImagePreviewField({
                         height: `${renderedHeight}px`,
                         minHeight: `${Math.max(MAIN_PREVIEW_MIN_HEIGHT, Number(minPreviewHeight) || 0)}px`,
                     }}
-                    onClick={handlePreviewClick}
-                    title={previewTitle}
                 >
+                    <button type="button" className="wfa-capture-hit-area" disabled={busy}
+                        onClick={handlePreviewClick} onContextMenu={canClearUpload ? clearPreview : undefined} title={previewTitle}
+                        aria-label={`${label || "图像"}，${hasPreview ? "重新捕获" : "捕获图像"}`} />
                     <span
                         className={`xlup-main-slot-label rh-main-node-label ${canClearUpload ? "xlup-float-label-btn" : ""}`}
+                        onClick={handlePreviewClick}
                         onContextMenu={clearPreview}
                         title={labelTitle}
                     >

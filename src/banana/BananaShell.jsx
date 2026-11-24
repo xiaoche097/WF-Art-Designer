@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { WorkspaceHeader } from "../components/WorkspaceHeader.jsx";
+import { WorkspaceSectionHeader } from "../components/shared/WorkspaceSectionHeader.jsx";
 import { createPortal } from "react-dom";
 import { core, app } from "photoshop";
 import { usePersistedState } from "../hooks/usePersistedState.js";
@@ -430,18 +432,14 @@ function BananaTopBar({ supplier, loading, onRefresh, isSettingsOpen, onToggleVi
     const [helpOpen, setHelpOpen] = useState(false);
     return (
         <>
-            <div className="rh-balance-bar comfy-topbar banana-balance-bar">
-                <div className="rh-balance-content comfy-topbar-left">
-                    <img src="icons/wf-brand.png" className="rh-balance-icon" alt="WF美工助手" />
-                    <div className="rh-balance-info"><span className="rh-balance-item">供应商 <span className="rh-balance-value">{supplier}</span></span></div>
-                </div>
-                <div className="rh-balance-bar-right">
-                    <button type="button" className="icon-btn" onClick={onRefresh} title="连接并刷新模型"><IconRefresh className={loading ? "rh-spinning" : ""} /></button>
-                    <button type="button" className="icon-btn rh-help-btn" onClick={() => setHelpOpen(true)} title="使用说明"><IconHelp /></button>
-                    <button type="button" className="icon-btn" onClick={onToggleView} title={isSettingsOpen ? "返回主页" : "打开设置"}>{isSettingsOpen ? <IconBack /> : <IconSettings />}</button>
-                </div>
-            </div>
-            {helpOpen && <div className="xl-popup-overlay" onClick={() => setHelpOpen(false)}><div className="xl-popup-dialog rh-help-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <WorkspaceHeader title={isSettingsOpen ? "织影设置" : "织影"} detail={`供应商 · ${supplier}`}
+                actions={<>
+                    <button type="button" className="icon-btn" onClick={onRefresh} title="连接并刷新模型" aria-label="连接并刷新模型"><IconRefresh className={loading ? "rh-spinning" : ""} /></button>
+                    <button type="button" className="icon-btn rh-help-btn" onClick={() => setHelpOpen(true)} title="使用说明" aria-label="使用说明"><IconHelp /></button>
+                    <button type="button" className="icon-btn" onClick={onToggleView} title={isSettingsOpen ? "返回主页" : "打开设置"} aria-label={isSettingsOpen ? "返回主页" : "打开设置"}>{isSettingsOpen ? <IconBack /> : <IconSettings />}</button>
+                </>}
+            />
+            {helpOpen && <div className="xl-popup-overlay" onClick={() => setHelpOpen(false)}><div className="xl-popup-dialog rh-help-dialog" role="dialog" aria-modal="true" aria-label="织影使用说明" onClick={(event) => event.stopPropagation()}>
                 <div className="xl-popup-icon rh-help-icon">?</div>
                 <div className="xl-popup-title">织影使用说明</div>
                 <div className="xl-popup-body rh-help-body"><p>插件可在 Photoshop 内快捷调用配置的生图模型。</p><ol className="rh-help-list"><li>在账户管理填写 API Base URL 和 API Key，刷新模型或手动填写模型 ID。</li><li>选择供应商、模型、尺寸和并发，填写提示词。</li><li>点击捕获图像，点击开始运行，等待回图。</li></ol></div>
@@ -454,7 +452,7 @@ function BananaTopBar({ supplier, loading, onRefresh, isSettingsOpen, onToggleVi
 function BananaQueueCard({ runs, onDismiss, onRetryPlace }) {
     const [open, setOpen] = useState(true);
     return <div className={`wfa-card rh-queue-card ${open ? "" : "is-collapsed"}`}>
-        <div className="card-header" onClick={() => setOpen((value) => !value)}><span className="header-title"><span className="title-icon">📋</span>任务队列 {runs.length ? `(${runs.length})` : ""}</span><div className={`collapse-arrow ${open ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div></div>
+        <WorkspaceSectionHeader title={`任务队列${runs.length ? ` · ${runs.length}` : ""}`} open={open} onToggle={() => setOpen(value => !value)} />
         <div className={`card-content ${open ? "" : "collapsed"}`}><div className="rh-task-queue">
             {!runs.length ? <div className="rh-task-empty">暂无任务</div> : runs.map((run) => {
                 const platform = run.platform || "banana";
@@ -668,9 +666,9 @@ function BananaHome({ state, actions }) {
             />
         </div>
     );
-    return <div className="banana-home">
+    return <div className="banana-home wfa-workspace-body">
         <div ref={paramsRef} className={"banana-param-dropdown" + (paramsOpen ? " is-open" : "")}>
-            <button type="button" className="banana-param-trigger" onClick={() => setParamsOpen((value) => !value)} aria-expanded={paramsOpen}>
+            <button type="button" className="banana-param-trigger wfa-workspace-field" onClick={() => setParamsOpen((value) => !value)} aria-expanded={paramsOpen}>
                 <span className="banana-param-trigger-content">
                     <span className="banana-param-trigger-label">参数设置</span>
                     <span className={"banana-param-trigger-caret" + (paramsOpen ? " is-open" : "")} />
@@ -688,15 +686,14 @@ function BananaHome({ state, actions }) {
             </button>
             <div className="rh-upload-status-bar banana-status-bar">
                 <div className="rh-status-text banana-status-line" title={`${state.statusText || "就绪"} 当前线路：${state.endpointLabel}`}>
-                    <span>{state.statusText || "就绪"}</span>
+                    <span role="status">{state.statusText || "就绪"}</span>
                     <span className="banana-status-route">当前线路：{state.endpointLabel}</span>
                 </div>
                 <div className="rh-progress-bar"><div className="rh-progress-fill" style={{ width: `${state.progress}%` }} /></div>
             </div>
         </div>
         <div className={`wfa-card banana-capture-card ${captureOpen ? "" : "is-collapsed"}`}>
-            <div className="card-header" onClick={() => setCaptureOpen((value) => !value)}>
-                <span className="header-title"><span className="title-icon">📸</span>捕获图像</span>
+            <WorkspaceSectionHeader title="捕获图像" open={captureOpen} onToggle={() => setCaptureOpen(value => !value)}>
                 <button
                     type="button"
                     className={`banana-prompt-preset-btn banana-multi-image-btn ${state.multiImageMode ? "is-open" : ""}`}
@@ -709,8 +706,7 @@ function BananaHome({ state, actions }) {
                 >
                     多图
                 </button>
-                <div className={`collapse-arrow ${captureOpen ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div>
-            </div>
+            </WorkspaceSectionHeader>
             <div className={`card-content ${captureOpen ? "" : "collapsed"}`}>
                 {state.multiImageMode ? (
                     <div className="banana-multi-capture">
@@ -740,8 +736,7 @@ function BananaHome({ state, actions }) {
             </div>
         </div>
         <div className={`wfa-card banana-prompt-card ${promptOpen ? "" : "is-collapsed"}`}>
-            <div className="card-header" onClick={() => setPromptOpen((value) => !value)}>
-                <span className="header-title"><span className="title-icon">📝</span>提示词</span>
+            <WorkspaceSectionHeader title="提示词" open={promptOpen} onToggle={() => setPromptOpen(value => !value)}>
                 <button
                     ref={promptHistoryBtnRef}
                     type="button"
@@ -770,8 +765,7 @@ function BananaHome({ state, actions }) {
                 >
                     预设
                 </button>
-                <div className={`collapse-arrow ${promptOpen ? "expanded" : "collapsed"}`}><span className="arrow-icon" /></div>
-            </div>
+            </WorkspaceSectionHeader>
             {promptPresetOpen && promptPresetMenuStyle && typeof document !== "undefined" && document.body
                 ? createPortal(promptPresetMenu, document.body)
                 : null}

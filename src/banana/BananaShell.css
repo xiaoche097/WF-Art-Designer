@@ -15,6 +15,9 @@
     flex: 0 0 auto;
 }
 
+.rh-shell-container .wfa-workspace .banana-settings-wrap { padding-inline: var(--wf-gutter); }
+.rh-shell-container .wfa-workspace .banana-settings-wrap .comfy-settings-wrap { padding-inline: 0; }
+
 .banana-home {
     inline-size: 100%;
     max-inline-size: 100%;
