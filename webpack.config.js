@@ -98,10 +98,10 @@ const hostConfig = {
 
 const appConfig = {
     name: "app",
-    entry: "./src/appWebView.jsx",
+    entry: { app: "./src/appWebView.jsx", "cloth-preview": "./src/retouch/clothPreviewPage.jsx" },
     output: {
         path: path.resolve(__dirname, "dist"),
-        filename: "app.js",
+        filename: "[name].js",
     },
     devtool,
     resolve: {
@@ -119,8 +119,9 @@ module.exports = (env = {}) => {
     if (!env.web) return [hostConfig, appConfig];
     return {
         ...appConfig,
+        entry: "./src/appWebView.jsx",
         name: "web",
-        output: { ...appConfig.output, path: path.resolve(__dirname, "web-dist"), clean: true },
+        output: { ...appConfig.output, filename: "app.js", path: path.resolve(__dirname, "web-dist"), clean: true },
         plugins: [
             new CopyPluginAssets({ from: "web" }),
             new CopyPluginAssets({ from: "plugin/icons", to: "icons" }),

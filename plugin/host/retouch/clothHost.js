@@ -1,12 +1,13 @@
 const { app, action, core, imaging, constants } = require("photoshop");
 const { constrainMask, resizeMask } = require("./clothComposite");
-const { buildToneField, renderTone } = require("./clothTone");
+const { buildToneField, buildToneBands, combineToneBands, renderTone } = require("./clothTone");
 const { toBase64 } = require("./retouchHost");
 
 const PROFILE = "sRGB IEC61966-2.1";
 const ENGINE_URL = "http://127.0.0.1:49321";
 const MAX_PIXELS = 12000000;
 const MAX_PREVIEW_EDGE = 640;
+const LARGE_PREVIEW_EDGE = 1280;
 let current;
 let sequence = 0;
 
@@ -165,8 +166,8 @@ function rgbaTile(source, x, y, width, height) {
     return toBase64(bytes);
 }
 
-function makePreview(rgba, width, height) {
-    const scale = Math.min(1, MAX_PREVIEW_EDGE / Math.max(width, height));
+function makePreview(rgba, width, height, edge = MAX_PREVIEW_EDGE) {
+    const scale = Math.min(1, edge / Math.max(width, height));
     const w = Math.max(1, Math.round(width * scale));
     const h = Math.max(1, Math.round(height * scale));
     const bytes = new Uint8Array(w * h * 4);
@@ -245,12 +246,40 @@ function decodeMask(text, length) {
     return bytes;
 }
 
-async function apply({ id, mask, fromPhotoshop, strength }) {
+function validateSettings(settings) {
+    if (!settings || ![settings.fine, settings.coarse].every(value => Number.isInteger(value) && value >= 0 && value <= 100)) {
+        throw Error("细褶和粗褶强度必须为 0 到 100");
+    }
+    return { fine: settings.fine, coarse: settings.coarse };
+}
+
+function detailedPreview(source, previewMask = null) {
+    const { rgba, width, height, limit, preview } = source;
+    const frame = source.largePreview ??= makePreview(rgba, width, height, LARGE_PREVIEW_EDGE);
+    const detailedLimit = resizeMask(limit, width, height, frame.w, frame.h);
+    const mask = previewMask
+        ? constrainMask(resizeMask(previewMask, preview.w, preview.h, frame.w, frame.h), frame.bytes, [detailedLimit])
+        : detailedLimit;
+    return { frame, mask };
+}
+
+function getPreview({ id, mask, fromPhotoshop, settings }) {
+    const { source } = requireCurrent(id);
+    if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
+    const previewMask = mask == null && fromPhotoshop ? null : decodeMask(mask, source.preview.w * source.preview.h);
+    const { frame, mask: detailedMask } = detailedPreview(source, previewMask);
+    return { width: frame.w, height: frame.h, originalWidth: source.width, originalHeight: source.height,
+        rgba: toBase64(frame.bytes), mask: toBase64(detailedMask), settings: validateSettings(settings) };
+}
+
+async function apply({ id, mask, fromPhotoshop, strength, settings }) {
     return core.executeAsModal(async ({ hostControl }) => {
         const { doc, source } = requireCurrent(id);
         const { rgba, width, height, bounds, limit, preview } = source;
-        const retouch = strength !== undefined;
-        if (retouch && (!Number.isInteger(strength) || strength < 1 || strength > 100)) throw Error("美化强度必须为 1 到 100");
+        const controls = settings !== undefined ? validateSettings(settings) : null;
+        const retouch = controls || strength !== undefined;
+        if (!controls && retouch && (!Number.isInteger(strength) || strength < 1 || strength > 100)) throw Error("美化强度必须为 1 到 100");
+        if (controls && !controls.fine && !controls.coarse) throw Error("请先调整细褶或粗褶强度");
         if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
         const previewMask = mask == null && fromPhotoshop
             ? resizeMask(limit, width, height, preview.w, preview.h)
@@ -265,13 +294,18 @@ async function apply({ id, mask, fromPhotoshop, strength }) {
         }
         if (!outputMask.some(Boolean)) throw Error("蒙版为空，没有可写入的区域");
         let pixelData = rgba;
-        if (retouch) {
+        if (controls) {
+            const { frame, mask: detailedMask } = detailedPreview(source, mask == null && fromPhotoshop ? null : previewMask);
+            const field = combineToneBands(buildToneBands(frame.bytes, detailedMask, frame.w, frame.h), controls);
+            pixelData = renderTone(rgba, width, height, field, frame.w, frame.h, outputMask, 100, false);
+        } else if (retouch) {
             const previewLimit = resizeMask(limit, width, height, preview.w, preview.h);
             const field = buildToneField(preview.bytes, constrainMask(previewMask, preview.bytes, [previewLimit]), preview.w, preview.h);
             pixelData = renderTone(rgba, width, height, field, preview.w, preview.h, outputMask, strength, false);
-            if (pixelData.every((value, index) => value === rgba[index])) throw Error("当前区域或强度没有可见变化，请调整强度或蒙版");
         }
-        const name = retouch ? `衣物美化 · ${strength}%` : "衣物美化 · 分割副本";
+        if (retouch && pixelData.every((value, index) => value === rgba[index])) throw Error("当前区域或强度没有可见变化，请调整强度或蒙版");
+        const name = controls ? `衣物美化 · 细褶 ${controls.fine} 粗褶 ${controls.coarse}`
+            : retouch ? `衣物美化 · ${strength}%` : "衣物美化 · 分割副本";
         const history = await hostControl.suspendHistory({ documentID: doc.id, name });
         let success = false, frame, gray;
         try {
@@ -337,4 +371,4 @@ async function segment({ id, token, points }) {
     }
 }
 
-module.exports = { inspect, openImage, prepareCopy, read, sampleDetail, apply, segment };
+module.exports = { inspect, openImage, prepareCopy, read, sampleDetail, apply, segment, getPreview, validateSettings };

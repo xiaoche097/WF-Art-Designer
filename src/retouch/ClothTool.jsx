@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "../bridge/uxpBridge.js";
-import { buildToneField, renderTone } from "../../plugin/host/retouch/clothTone.js";
+import { buildToneBands, combineToneBands, renderTone } from "../../plugin/host/retouch/clothTone.js";
 import { findClothes } from "./clothMask.js";
+import { ClothSliders, DEFAULT_CLOTH_SETTINGS } from "./ClothSliders.jsx";
 
 const decode = value => Uint8ClampedArray.from(atob(value), char => char.charCodeAt(0));
 
@@ -51,7 +52,7 @@ export function ClothTool({ connected }) {
     const [document, setDocument] = useState(null);
     const [source, setSource] = useState(null);
     const [edit, setEdit] = useState(null);
-    const [strength, setStrength] = useState(50);
+    const [settings, setSettings] = useState(DEFAULT_CLOTH_SETTINGS);
     const [layerId, setLayerId] = useState("");
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState(null);
@@ -65,14 +66,15 @@ export function ClothTool({ connected }) {
     const pending = useRef(false);
 
     const mask = draft || edit?.mask;
-    const field = useMemo(() => source && edit
-        ? buildToneField(source.frame.pixels, edit.mask, source.frame.width, source.frame.height)
+    const bands = useMemo(() => source && edit
+        ? buildToneBands(source.frame.pixels, edit.mask, source.frame.width, source.frame.height)
         : null, [source, edit]);
     const pixels = useMemo(() => {
         if (!source) return null;
         const { pixels, width, height } = source.frame;
-        return !field || !strength || showOriginal ? pixels : renderTone(pixels, width, height, field, width, height, mask, strength);
-    }, [source, field, mask, strength, showOriginal]);
+        return !bands || (!settings.fine && !settings.coarse) || showOriginal ? pixels
+            : renderTone(pixels, width, height, combineToneBands(bands, settings), width, height, mask, 100);
+    }, [source, bands, mask, settings, showOriginal]);
 
     function notify(text, error = false) {
         setNotice(text ? { text, error } : null);
@@ -208,7 +210,22 @@ export function ClothTool({ connected }) {
         onPointerCancel: () => { stroke.current = null; setDraft(null); },
     };
 
-    const canApply = Boolean(field?.some(value => Math.abs(value * strength / 100) >= .5));
+    function openPreview() {
+        run(null, async () => {
+            const request = {
+                id: source.id, mask: edit.fromPhotoshop ? null : encode(edit.mask),
+                fromPhotoshop: edit.fromPhotoshop, settings,
+            };
+            const confirmed = await invoke("cloth.previewDialog", request);
+            if (!confirmed) return;
+            setSettings(confirmed);
+            notify("正在写入衣物美化图层…");
+            await invoke("cloth.apply", { ...request, settings: confirmed });
+            setApplied(true);
+            setBrush(null);
+            notify("已应用到新的 Photoshop 图层。");
+        });
+    }
 
     return <section className="wfa-retouch-card wfa-cloth-tool" aria-busy={busy}>
         <div className="wfa-retouch-heading">
@@ -222,25 +239,14 @@ export function ClothTool({ connected }) {
             <button type="button" disabled={!connected || busy} onClick={readCurrent}>读取当前文档</button>
         </div>
         {source && <>
-            <label className="wfa-cloth-strength">
-                <span>美化强度 <output>{strength}%</output></span>
-                <input aria-label="美化强度" type="range" min="0" max="100" step="1" value={strength}
-                    disabled={!edit || busy || applied} onChange={event => {
-                        setStrength(Number(event.target.value));
-                        setShowOriginal(false);
-                    }} />
-            </label>
+            <ClothSliders settings={settings} disabled={!edit || busy || applied}
+                onChange={(key, value) => {
+                    setSettings(current => current[key] === value ? current : { ...current, [key]: value });
+                    setShowOriginal(false);
+                }} />
+            <button type="button" className="wfa-retouch-primary" disabled={!edit || busy || applied || Boolean(draft)}
+                onClick={openPreview}>{applied ? "已应用到图层" : "打开大图预览"}</button>
             <Preview frame={source.frame} pixels={pixels} overlay={brush && mask} interactive={Boolean(brush && !applied)} handlers={handlers} />
-            <button type="button" className="wfa-retouch-primary" disabled={!canApply || busy || applied || Boolean(draft)}
-                onClick={() => run("正在写入衣物美化图层…", async () => {
-                    await invoke("cloth.apply", {
-                        id: source.id, mask: edit.fromPhotoshop ? null : encode(edit.mask),
-                        fromPhotoshop: edit.fromPhotoshop, strength,
-                    });
-                    setApplied(true);
-                    setBrush(null);
-                    notify("已应用到新的 Photoshop 图层。");
-                })}>{applied ? "已应用到图层" : "应用到图层"}</button>
             {!applied && <details className="wfa-cloth-advanced" onToggle={event => {
                 if (!event.currentTarget.open) setBrush(null);
             }}>

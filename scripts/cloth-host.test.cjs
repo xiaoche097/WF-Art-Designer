@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { test } = require("node:test");
 const { composite, constrainMask } = require("../plugin/host/retouch/clothComposite");
-const { buildToneField, renderTone } = require("../plugin/host/retouch/clothTone");
+const { buildToneField, buildToneBands, combineToneBands, renderTone } = require("../plugin/host/retouch/clothTone");
 
 test("clothing intensity lifts fold shadows without changing alpha or unmasked pixels", () => {
     const width = 160, height = 100;
@@ -24,6 +24,13 @@ test("clothing intensity lifts fold shadows without changing alpha or unmasked p
     assert.ok(slight[at(80, 48)] > rgba[at(80, 48)]);
     assert.ok(strong[at(80, 49)] - strong[at(80, 48)] >= 6);
     assert.equal(strong[at(80, 48)] - strong[at(80, 48) + 1], 15);
+    const bands = buildToneBands(rgba, mask, width, height);
+    const off = combineToneBands(bands, { fine: 0, coarse: 0 });
+    const fineOnly = combineToneBands(bands, { fine: 100, coarse: 0 });
+    const coarseOnly = combineToneBands(bands, { fine: 0, coarse: 100 });
+    assert.ok(off.every(value => value === 0));
+    assert.notDeepEqual(fineOnly, coarseOnly);
+    assert.ok(fineOnly[48 * width + 79] > 0);
     for (let p = 0; p < mask.length; p++) {
         assert.equal(strong[p * 4 + 3], rgba[p * 4 + 3]);
         if (!mask[p] || rgba[p * 4 + 3] !== 255) {
@@ -162,6 +169,15 @@ test("P0/P1 bridge offsets, soft mask, result layer and stale snapshot guard", a
     assert.equal(resultLayers.at(-1).name, "衣物美化 · 100%");
     assert.equal(resultLayers.at(-1).visible, true);
     assert.notDeepEqual(writePixels.imageData.data, rgba);
+    const revised = await host.read({ docId: copy.docId, layerId: target.id });
+    const beforeCount = resultLayers.length;
+    const settings = { fine: 100, coarse: 80 };
+    const detailed = host.getPreview({ id: revised.id, fromPhotoshop: true, settings });
+    assert.equal(detailed.width, 8);
+    assert.deepEqual(detailed.settings, settings);
+    assert.equal(resultLayers.length, beforeCount);
+    await host.apply({ id: revised.id, fromPhotoshop: true, settings });
+    assert.equal(resultLayers.at(-1).name, "衣物美化 · 细褶 100 粗褶 80");
     mock.app.activeDocument = doc;
     doc.mode = "rgb";
     doc.bitsPerChannel = 8;
