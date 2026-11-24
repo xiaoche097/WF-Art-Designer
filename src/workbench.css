@@ -1,0 +1,95 @@
+.rh-shell-container {
+    --wf-surface: #151d29;
+    --wf-surface-raised: #202d3e;
+    --wf-field: #0f1621;
+    --wf-border: #344357;
+    --wf-text: #f0f4f9;
+    --wf-muted: #aab9cc;
+    --wf-accent: #9fc5ff;
+    --wf-on-accent: #101b2e;
+    --wf-error: #ffb5ad;
+    --wf-radius: 8px;
+    --wf-motion: 140ms ease;
+}
+
+.rh-shell-container :is(.wfa-card, .rh-card)::after {
+    background: var(--wf-border);
+    padding: 1px;
+    animation: none;
+    will-change: auto;
+}
+
+.rh-shell-container .card-header {
+    min-block-size: 36px;
+    padding-inline: 12px;
+}
+
+.rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .rh-balance-bar,
+.rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-panel {
+    border-color: var(--wf-border);
+    background: var(--wf-surface);
+}
+
+.rh-shell-container .wfa-product-mode-panel {
+    gap: 4px;
+    padding: 4px;
+    border-radius: calc(var(--wf-radius) + 2px);
+}
+
+.rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-item {
+    min-block-size: 32px;
+    border-radius: var(--wf-radius);
+    color: var(--wf-muted);
+    transition: color var(--wf-motion), background-color var(--wf-motion);
+}
+
+.rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-item:hover {
+    background: var(--wf-surface-raised);
+    color: var(--wf-text);
+}
+
+.rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-item.is-current {
+    background: var(--wf-accent);
+    color: var(--wf-on-accent);
+}
+
+.rh-shell-container :is(button, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--wf-accent);
+    outline-offset: -2px;
+}
+
+.rh-shell-container :is(.rh-run-btn, .rh-account-refresh):not(:disabled) {
+    border-color: transparent;
+    background: var(--wf-accent);
+    color: var(--wf-on-accent);
+}
+
+.rh-shell-container :is(.rh-run-btn, .rh-account-refresh):not(:disabled):hover {
+    background: #bed8ff;
+}
+
+.rh-shell-container.rh-custom-text-color
+    :is(.wfa-product-mode-item.is-current, .zhiying-fetch-models, .rh-run-btn:not(:disabled), .rh-account-refresh:not(:disabled)) {
+    color: var(--wf-on-accent) !important;
+    -webkit-text-fill-color: var(--wf-on-accent) !important;
+}
+
+.rh-shell-container.rh-custom-text-color
+    :is(.rh-run-btn:not(:disabled), .rh-account-refresh:not(:disabled)) svg {
+    color: var(--wf-on-accent) !important;
+}
+
+.rh-shell-container :is(.rh-run-btn:not(:disabled), .rh-account-refresh:not(:disabled), .wfa-product-mode-item.is-current, .zhiying-fetch-models):focus-visible {
+    outline-color: var(--wf-on-accent);
+}
+
+.rh-shell-container.rh-custom-text-color .zhiying-model-error {
+    color: var(--wf-error) !important;
+    -webkit-text-fill-color: var(--wf-error) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rh-shell-container :is(.wfa-product-mode-item, .wfa-card, .rh-balance-bar .icon-btn) {
+        transition: none;
+    }
+}

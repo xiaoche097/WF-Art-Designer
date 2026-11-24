@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: plugin: http: https: ws: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval' plugin:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: plugin: http: https:; connect-src *;" />
+  <title>WF美工助手 Host</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      min-width: 350px;
+      height: 100%;
+      min-height: 400px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #1e1e1e;
+    }
+  </style>
+  <script>
+    window.global = window.global || window;
+    if (!window.global.screen) window.global.screen = {};
+    if (window.WebSocket && window.WebSocket.prototype) {
+      window.WebSocket.prototype.OPEN = 1;
+    }
+  </script>
+  <script src="host.js"></script>
+</head>
+<body></body>
+</html>

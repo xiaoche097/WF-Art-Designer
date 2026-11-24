@@ -1,0 +1,147 @@
+.wfa-stepper {
+    --wfa-stepper-border: rgba(238, 244, 255, 0.14);
+    --wfa-stepper-border-focus: rgba(122, 173, 255, 0.48);
+    --wfa-stepper-surface: rgba(9, 14, 23, 0.42);
+    --wfa-stepper-cell: rgba(255, 255, 255, 0.035);
+    --wfa-stepper-cell-hover: rgba(132, 181, 255, 0.14);
+    --wfa-stepper-text: rgba(248, 251, 255, 0.92);
+    --wfa-stepper-muted: rgba(248, 251, 255, 0.46);
+
+    display: inline-grid;
+    grid-template-columns: minmax(28px, auto) minmax(0, 1fr) minmax(28px, auto);
+    align-items: stretch;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    min-block-size: 30px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid var(--wfa-stepper-border);
+    border-radius: 8px;
+    background: var(--wfa-stepper-surface);
+    color: var(--wfa-stepper-text);
+    color-scheme: dark;
+    font: inherit;
+    font-size: var(--wfa-input-font-size, 12px);
+    line-height: 1;
+    vertical-align: middle;
+    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.wfa-stepper:hover:not(.wfa-stepper--disabled),
+.wfa-stepper:focus-within:not(.wfa-stepper--disabled) {
+    border-color: var(--wfa-stepper-border-focus);
+    background: rgba(6, 12, 21, 0.52);
+}
+
+.wfa-stepper--compact {
+    grid-template-columns: minmax(26px, auto) minmax(0, 1fr) minmax(26px, auto);
+    min-block-size: 24px;
+    font-size: 13px;
+}
+
+.wfa-stepper-btn,
+.wfa-stepper-value,
+.wfa-stepper-input {
+    min-inline-size: 0;
+    margin: 0;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wfa-stepper-btn {
+    display: grid;
+    place-items: center;
+    inline-size: 100%;
+    min-inline-size: 28px;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.12);
+    color: rgba(255, 255, 255, 0.78);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 800;
+    user-select: none;
+    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.wfa-stepper-btn:first-child {
+    border-inline-end: 1px solid rgba(255, 255, 255, 0.105);
+}
+
+.wfa-stepper-btn:last-child {
+    border-inline-start: 1px solid rgba(255, 255, 255, 0.105);
+}
+
+.wfa-stepper--compact .wfa-stepper-btn {
+    min-inline-size: 26px;
+    font-size: 13px;
+}
+
+.wfa-stepper-btn:hover:not(:disabled) {
+    background: var(--wfa-stepper-cell-hover);
+    color: #fff;
+}
+
+.wfa-stepper-btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.wfa-stepper-btn:disabled,
+.wfa-stepper-value:disabled {
+    cursor: default;
+    opacity: 0.42;
+}
+
+.wfa-stepper-value,
+.wfa-stepper-input {
+    inline-size: 100%;
+    min-block-size: 100%;
+    padding-inline: 8px;
+    background: var(--wfa-stepper-cell);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.wfa-stepper-value {
+    overflow: hidden;
+    cursor: text;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wfa-stepper-value:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.wfa-stepper-input {
+    outline: 0;
+    cursor: text;
+}
+
+.wfa-stepper-input:focus,
+.wfa-stepper-value:focus-visible,
+.wfa-stepper-btn:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 0;
+    box-shadow: inset 0 0 0 2px var(--wfa-stepper-border-focus);
+}
+
+.wfa-stepper-input::placeholder {
+    color: var(--wfa-stepper-muted);
+}
+
+.wfa-stepper--compact .wfa-stepper-value,
+.wfa-stepper--compact .wfa-stepper-input {
+    padding-inline: 5px;
+}
+
+.wfa-stepper--disabled {
+    opacity: 0.56;
+    pointer-events: none;
+}

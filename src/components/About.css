@@ -1,0 +1,299 @@
+.wfa-about {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    color: rgba(255, 255, 255, 0.9);
+    background: var(--uxp-host-background-color, #202124);
+    font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
+
+.wfa-about__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 14px;
+    box-sizing: border-box;
+}
+
+.wfa-about__masthead {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.055);
+    box-sizing: border-box;
+}
+
+.wfa-about__mark {
+    width: 54px;
+    height: 54px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: var(--wfa-accent, #82b7ff);
+    background: rgba(130, 183, 255, 0.1);
+    border: 1px solid rgba(130, 183, 255, 0.28);
+    box-sizing: border-box;
+}
+
+.wfa-about__mark-icon {
+    width: 34px;
+    height: 34px;
+    display: block;
+}
+
+.wfa-about__titlebox {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "eyebrow version"
+        "title version";
+    column-gap: 10px;
+    row-gap: 4px;
+    align-items: center;
+}
+
+.wfa-about__eyebrow {
+    grid-area: eyebrow;
+    color: rgba(255, 255, 255, 0.56);
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.wfa-about__title {
+    grid-area: title;
+    min-width: 0;
+    margin: 0;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0;
+}
+
+.wfa-about__version {
+    grid-area: version;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 0 9px;
+    border-radius: 6px;
+    border: 1px solid rgba(130, 183, 255, 0.36);
+    color: rgba(225, 239, 255, 0.95);
+    background: rgba(130, 183, 255, 0.14);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.wfa-about__section,
+.wfa-about__creator,
+.wfa-about__tip,
+.wfa-about__runtime {
+    margin-bottom: 10px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    box-sizing: border-box;
+}
+
+.wfa-about__line {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wfa-about__line:first-child {
+    padding-top: 0;
+}
+
+.wfa-about__line:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.wfa-about__line-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 5px;
+    border-radius: 999px;
+    background: var(--wfa-accent, #82b7ff);
+    box-shadow: 0 0 0 3px rgba(130, 183, 255, 0.12);
+}
+
+.wfa-about__line-title,
+.wfa-about__creator-name {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.wfa-about__line-text,
+.wfa-about__contact-row,
+.wfa-about__tip,
+.wfa-about__copyright,
+.wfa-about__runtime-value {
+    color: rgba(255, 255, 255, 0.64);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.wfa-about__creator {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+}
+
+.wfa-about__avatar-wrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.wfa-about__avatar {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.wfa-about__creator-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wfa-about__contact-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+}
+
+.wfa-about__contact-row span {
+    white-space: nowrap;
+}
+
+.wfa-about__tip-button {
+    min-height: 30px;
+    padding: 0 11px;
+    border: 1px solid rgba(130, 183, 255, 0.36);
+    border-radius: 7px;
+    color: rgba(245, 249, 255, 0.95);
+    background: rgba(130, 183, 255, 0.13);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.wfa-about__tip-button:hover {
+    background: rgba(130, 183, 255, 0.2);
+}
+
+.wfa-about__tip {
+    margin-top: -2px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.wfa-about__tip p {
+    margin: 0 0 8px;
+}
+
+.wfa-about__qr-wrap {
+    display: flex;
+    justify-content: center;
+}
+
+.wfa-about__qr {
+    width: min(176px, 82%);
+    max-height: 220px;
+    padding: 4px;
+    border-radius: 8px;
+    background: #fff;
+    object-fit: contain;
+    box-sizing: border-box;
+}
+
+.wfa-about__runtime {
+    margin-bottom: 0;
+    display: grid;
+    gap: 7px;
+}
+
+.wfa-about__runtime-item {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+}
+
+.wfa-about__runtime-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+}
+
+.wfa-about__runtime-value {
+    min-width: 0;
+    word-break: break-all;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+}
+
+.wfa-about__footer {
+    flex: 0 0 auto;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.16);
+    box-sizing: border-box;
+}
+
+.wfa-about__copyright {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 430px) {
+    .wfa-about__masthead,
+    .wfa-about__creator,
+    .wfa-about__footer {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .wfa-about__footer {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .wfa-about__tip-button {
+        width: 100%;
+    }
+}

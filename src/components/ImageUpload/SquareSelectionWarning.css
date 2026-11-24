@@ -1,0 +1,54 @@
+.wfa-square-warning-dialog {
+    padding-top: 18px;
+}
+
+.wfa-square-warning-icon {
+    padding: 8px 0 6px;
+    color: #8ef8ff;
+    font-size: 34px;
+    font-weight: 800;
+    animation: none;
+}
+
+.wfa-square-warning-note {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.74);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.wfa-square-warning-actions {
+    padding-top: 18px;
+}
+
+.wfa-square-warning-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+    padding-right: 12px;
+    padding-left: 12px;
+    white-space: nowrap;
+}
+
+.wfa-square-warning-btn--skip {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.76);
+}
+
+.wfa-square-warning-btn--continue {
+    background: linear-gradient(135deg, #5d73ff, #2df0cf);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(77, 88, 255, 0.44);
+}
+
+.wfa-square-warning-btn--modify {
+    border: 1px solid rgba(95, 146, 255, 0.46);
+    background: rgba(77, 88, 255, 0.24);
+    color: rgba(255, 255, 255, 0.92);
+}
