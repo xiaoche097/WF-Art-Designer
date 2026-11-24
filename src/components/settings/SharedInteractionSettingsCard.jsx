@@ -19,6 +19,7 @@ import {
     writePlaceKeepSelectionToStorage,
 } from "../../utils/placeEdgeFeatherOpts.js";
 import { writeCompatLocalStorage } from "../../utils/storageKeyCompat.js";
+import { WF_BRAND_THEME } from "../../utils/themeConfig.js";
 import { writeAutoReturnEnabled, writeConcurrentReturnGroupEnabled, writeSoundMuted } from "../../utils/sharedInteractionSettings.js";
 import { DEFAULT_FAIL_SOUND, DEFAULT_SUCCESS_SOUND } from "../../utils/playSound.js";
 import { normalizeRhImageLongEdgeMax, RH_IMAGE_LONG_EDGE_OPTIONS } from "../../runninghub/rhImageLongEdge.js";
@@ -535,8 +536,8 @@ export function SharedPersonalizationSettingsContent({
         const nextMode = mode === "light" ? "light" : "dark";
         setThemeMode?.(nextMode);
         if (nextMode === "light") {
-            setThemeColorStart?.("#38d7c8");
-            setThemeColorEnd?.("#8b7cff");
+            setThemeColorStart?.(WF_BRAND_THEME.start);
+            setThemeColorEnd?.(WF_BRAND_THEME.end);
             setOpacity?.(0.25);
             setBlur?.(0);
             setTextColor?.("#ffffff");

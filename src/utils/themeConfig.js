@@ -1,5 +1,7 @@
 import { readCompatLocalStorage, writeCompatLocalStorage } from "./storageKeyCompat.js";
 
+export const WF_BRAND_THEME = Object.freeze({ start: "#6182db", end: "#a8bcff" });
+
 const COLOR_ROWS = [
     ["result", "#FFB7C5"],
     ["input", "#5ac8fa"],

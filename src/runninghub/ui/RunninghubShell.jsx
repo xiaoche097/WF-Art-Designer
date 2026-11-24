@@ -62,6 +62,7 @@ import {
 } from "../../components/settings/SharedInteractionSettingsCard.jsx";
 import { ProductModeButton, PRODUCT_MODE_ORDER } from "../../components/ProductModeButton.jsx";
 import { WorkspaceHeader } from "../../components/WorkspaceHeader.jsx";
+import { WF_BRAND_THEME } from "../../utils/themeConfig.js";
 import { rhFetchAccountStatus } from "../taskApi.js";
 import { webappIdToCanonicalString, fetchAiAppInputs } from "../appDemo.js";
 import { RH_DEFAULT_BASE_URL } from "../constants.js";
@@ -1003,8 +1004,16 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
     const [rhDefinitionRefreshTick, setRhDefinitionRefreshTick] = useState(0);
 
     const { apiKey, apiKeys, apiKeyMode, setApiKeyForMode, setApiKeyMode } = useRhApiKey();
-    const [themeColorStart, setThemeColorStart] = usePersistedState("rh_theme_color_start", "#38d7c8");
-    const [themeColorEnd, setThemeColorEnd] = usePersistedState("rh_theme_color_end", "#8b7cff");
+    const [themeColorStart, setThemeColorStart] = usePersistedState("rh_theme_color_start", WF_BRAND_THEME.start);
+    const [themeColorEnd, setThemeColorEnd] = usePersistedState("rh_theme_color_end", WF_BRAND_THEME.end);
+    useEffect(() => {
+        if (readCompatLocalStorage("rh_brand_palette_v1") === "1") return;
+        if (String(themeColorStart).toLowerCase() === "#38d7c8" && String(themeColorEnd).toLowerCase() === "#8b7cff") {
+            setThemeColorStart(WF_BRAND_THEME.start);
+            setThemeColorEnd(WF_BRAND_THEME.end);
+        }
+        writeCompatLocalStorage("rh_brand_palette_v1", "1");
+    }, [themeColorStart, themeColorEnd, setThemeColorStart, setThemeColorEnd]);
     const [opacity, setOpacity] = usePersistedState("rh_opacity", RH_DEFAULT_OPACITY);
     const [blur, setBlur] = usePersistedState("rh_blur", RH_DEFAULT_BLUR);
     const [customBgEnabled, setCustomBgEnabled] = usePersistedState("rh_custom_bg_enabled", false);

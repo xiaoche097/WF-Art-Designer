@@ -1,15 +1,15 @@
 .rh-shell-container {
-    --wf-canvas: #101416;
-    --wf-surface: #191f22;
-    --wf-surface-raised: #222b2e;
-    --wf-field: #121719;
-    --wf-border: #354044;
-    --wf-text: #eef3f2;
-    --wf-muted: #a9b8b6;
-    --wf-accent: #88dbc8;
-    --wf-accent-hover: #a5e8d8;
-    --wf-on-accent: #112620;
-    --wf-selected: #253e38;
+    --wf-canvas: #101426;
+    --wf-surface: #1a2238;
+    --wf-surface-raised: #252f48;
+    --wf-field: #131a2c;
+    --wf-border: #3e4a65;
+    --wf-text: #f4f6ff;
+    --wf-muted: #b5c1db;
+    --wf-accent: #a8bcff;
+    --wf-accent-hover: #c5d3ff;
+    --wf-on-accent: #141e44;
+    --wf-selected: #29395f;
     --wf-error: #ffb5ad;
     --wf-warning: #ebc486;
     --wf-radius: 8px;
@@ -42,17 +42,17 @@
 }
 
 .rh-shell-container.rh-theme-light {
-    --wf-canvas: #eaeff0;
-    --wf-surface: #f8faf9;
-    --wf-surface-raised: #e7eeeb;
+    --wf-canvas: #e9edf7;
+    --wf-surface: #f8faff;
+    --wf-surface-raised: #e5ebfa;
     --wf-field: #fff;
-    --wf-border: #b8c9c6;
-    --wf-text: #182624;
-    --wf-muted: #4d625e;
-    --wf-accent: #116657;
-    --wf-accent-hover: #0c5448;
+    --wf-border: #b8c5df;
+    --wf-text: #151f40;
+    --wf-muted: #4d5a79;
+    --wf-accent: #29489a;
+    --wf-accent-hover: #223a80;
     --wf-on-accent: #fff;
-    --wf-selected: #dcece7;
+    --wf-selected: #dde6ff;
     --wf-error: #a22927;
     --wf-warning: #76530b;
     color-scheme: light;
