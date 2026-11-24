@@ -1257,7 +1257,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
             <ProductModeButton activeProduct={activeProductMode} onChange={changeProduct} />
             <div hidden={activeProductMode !== "settings"}>
                 <div className="rh-settings-wrap settings-container">
-                    <PluginUpdateSettingsCard />
+                    <PluginUpdateSettingsCard active={activeProductMode === "settings"} />
                 </div>
             </div>
             <div style={{ display: activeProductMode === "comfy" ? "flex" : "none", flex: 1, minHeight: 0, flexDirection: "column" }}>

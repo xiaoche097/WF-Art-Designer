@@ -1,17 +1,26 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fetchProxy, invoke, isInWebView } from "../../bridge/uxpBridge.js";
 import { PLUGIN_VERSION } from "../../pluginMeta.js";
 import { comparePluginVersions, getInstalledPluginRelease, getLatestPluginRelease, PLUGIN_RELEASES_PAGE } from "../../utils/pluginReleases.js";
 import { SettingsCard } from "./SettingsCard.jsx";
 
-export function PluginUpdateSettingsCard() {
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
+export function PluginUpdateSettingsCard({ active }) {
     const [busy, setBusy] = useState("");
     const [message, setMessage] = useState("");
     const [download, setDownload] = useState(null);
+    const [checkedAt, setCheckedAt] = useState(null);
     const lock = useRef(false);
     const inPhotoshop = isInWebView();
 
-    async function requestUpdate(operation, selectedRelease) {
+    const openDownload = useCallback(async (release) => {
+        if (!inPhotoshop) return;
+        await invoke("pluginUpdate.openInstallerDownload", release.tag);
+        setMessage(`已打开 ${release.version} 的下载。请运行下载的 EXE，安装后重启 Photoshop。`);
+    }, [inPhotoshop]);
+
+    const requestUpdate = useCallback(async (operation, selectedRelease) => {
         if (lock.current) return;
         lock.current = true;
         setBusy(operation);
@@ -26,6 +35,7 @@ export function PluginUpdateSettingsCard() {
             const release = reinstall
                 ? await getInstalledPluginRelease(PLUGIN_VERSION, fetchProxy)
                 : await getLatestPluginRelease(fetchProxy);
+            if (operation === "check") setCheckedAt(new Date());
             if (!release) {
                 setMessage(reinstall ? `GitHub 尚未发布当前版本 v${PLUGIN_VERSION}。` : "GitHub 尚未提供可查询的稳定版。");
                 return;
@@ -53,13 +63,21 @@ export function PluginUpdateSettingsCard() {
             lock.current = false;
             setBusy("");
         }
-    }
+    }, [inPhotoshop, openDownload]);
 
-    async function openDownload(release) {
-        if (!inPhotoshop) return;
-        await invoke("pluginUpdate.openInstallerDownload", release.tag);
-        setMessage(`已打开 ${release.version} 的下载。请运行下载的 EXE，安装后重启 Photoshop。`);
-    }
+    useEffect(() => {
+        if (!active) return;
+        const refresh = () => {
+            if (document.visibilityState !== "hidden") requestUpdate("check");
+        };
+        refresh();
+        const timer = setInterval(refresh, REFRESH_INTERVAL_MS);
+        document.addEventListener("visibilitychange", refresh);
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener("visibilitychange", refresh);
+        };
+    }, [active, requestUpdate]);
 
     return (
         <SettingsCard cardClass="rh-config-card wfa-plugin-update" title="插件与更新">
@@ -77,6 +95,7 @@ export function PluginUpdateSettingsCard() {
                     </button>
                 </div>
                 {message && <p role="status">{message}</p>}
+                {checkedAt && <small>最近成功查询 {checkedAt.toLocaleTimeString()}</small>}
                 {download && (inPhotoshop
                     ? <button type="button" disabled={Boolean(busy)} onClick={() => requestUpdate("download", download)}>下载 v{download.version} 安装包</button>
                     : <a href={download.installerUrl} target="_blank" rel="noopener noreferrer">下载 v{download.version} 安装包</a>)}

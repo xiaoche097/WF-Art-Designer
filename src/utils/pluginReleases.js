@@ -3,6 +3,7 @@ const RELEASES_PATH = `/${REPOSITORY}/releases`;
 const RELEASES_API = `https://api.github.com/repos${RELEASES_PATH}`;
 export const PLUGIN_RELEASES_PAGE = `https://github.com${RELEASES_PATH}`;
 const RELEASE_VERSION = /^v?(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
+let requestSequence = 0;
 
 export function comparePluginVersions(a, b) {
     const left = RELEASE_VERSION.exec(a);
@@ -22,7 +23,9 @@ export function pluginInstallerUrl(tag) {
 }
 
 async function getRelease(endpoint, request) {
-    const response = await request(`${RELEASES_API}/${endpoint}`, {
+    // A new URL keeps both the WebView and host transport from reusing cached metadata.
+    const check = `${Date.now()}-${++requestSequence}`;
+    const response = await request(`${RELEASES_API}/${endpoint}?wf_check=${check}`, {
         headers: { Accept: "application/vnd.github+json" },
         timeoutMs: 12000,
         hostTimeoutBufferMs: 0,
