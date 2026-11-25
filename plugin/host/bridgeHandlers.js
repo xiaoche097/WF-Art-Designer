@@ -1169,7 +1169,7 @@ function wfArtAssistantFetchController(timeoutMs) {
     return { controller, timeoutId: setTimeout(() => controller.abort(), timeoutMs) };
 }
 
-async function wfArtAssistantReadFetchResponse(resp, returnBinary) {
+async function wfArtAssistantReadFetchResponse(resp, returnBinary, strictBody = false) {
     if (returnBinary) {
         const bytes = new Uint8Array(await resp.arrayBuffer().catch(() => new ArrayBuffer(0)));
         const binary = typeof TextDecoder !== "undefined" ? new TextDecoder("latin1").decode(bytes) : _uint8ToBinaryFallback(bytes);
@@ -1185,20 +1185,24 @@ async function wfArtAssistantReadFetchResponse(resp, returnBinary) {
         ok: resp.ok,
         status: resp.status,
         statusText: resp.statusText || "",
-        body: await resp.text().catch(() => ""),
+        body: strictBody ? await resp.text() : await resp.text().catch(() => ""),
     };
 }
 
-async function wfArtAssistantHostFetch(reqUrl, opts = {}) {
+const activeNetworkFetches = new Map();
+
+async function wfArtAssistantHostFetch(reqUrl, opts = {}, requestId) {
     const { controller, timeoutId } = wfArtAssistantFetchController(wfArtAssistantBuildFetchTimeout(opts));
+    if (opts.cancellable && controller) activeNetworkFetches.set(requestId, controller);
     try {
         const fetchOpts = { method: opts.method || "GET", headers: opts.headers || {}, body: opts.body };
         if (controller) fetchOpts.signal = controller.signal;
-        return await wfArtAssistantReadFetchResponse(await fetch(reqUrl, fetchOpts), opts.returnBinary === true);
+        return await wfArtAssistantReadFetchResponse(await fetch(reqUrl, fetchOpts), opts.returnBinary === true, opts.cancellable);
     } catch (error) {
         if (error?.name === "AbortError") throw new Error("请求超时");
         throw error;
     } finally {
+        if (opts.cancellable) activeNetworkFetches.delete(requestId);
         if (timeoutId) clearTimeout(timeoutId);
     }
 }
@@ -1305,8 +1309,8 @@ async function wfArtAssistantFetchMultipartSingle(args) {
     return wfArtAssistantPostMultipart(reqUrl, formData, extraHeaders);
 }
 
-async function wfArtAssistantFetchMultipartMany(args) {
-    const [reqUrl, formFields = {}, fileParts = [], extraHeaders = {}] = args;
+async function wfArtAssistantFetchMultipartMany(args, requestId) {
+    const [reqUrl, formFields = {}, fileParts = [], extraHeaders = {}, opts = {}] = args;
     const formData = new FormData();
     wfArtAssistantAppendPlainFormFields(formData, formFields);
     for (const part of Array.isArray(fileParts) ? fileParts : []) {
@@ -1320,7 +1324,9 @@ async function wfArtAssistantFetchMultipartMany(args) {
             String(part?.fileName || "image.png").trim() || "image.png"
         );
     }
-    return wfArtAssistantPostMultipart(reqUrl, formData, extraHeaders);
+    if (!opts.cancellable && !opts.timeoutMs) return wfArtAssistantPostMultipart(reqUrl, formData, extraHeaders);
+    return wfArtAssistantHostFetch(reqUrl, { ...opts, method: "POST", body: formData,
+        headers: wfArtAssistantHeadersForMultipart(extraHeaders) }, requestId);
 }
 
 async function wfArtAssistantFetchMultipartUploadSession(args) {
@@ -2100,7 +2106,12 @@ export function setupBridge(webviewEl) {
                     break;
                 }
                 case "network.fetch": {
-                    result = await wfArtAssistantHostFetch(args[0], args[1] || {});
+                    result = await wfArtAssistantHostFetch(args[0], args[1] || {}, id);
+                    break;
+                }
+                case "network.cancelFetch": {
+                    activeNetworkFetches.get(args[0])?.abort();
+                    result = { ok: true };
                     break;
                 }
                 case "network.fetchFormData": {
@@ -2109,7 +2120,7 @@ export function setupBridge(webviewEl) {
                 }
                 /** multipart 多文件上传 */
                 case "network.fetchFormDataMultiFiles": {
-                    result = await wfArtAssistantFetchMultipartMany(args);
+                    result = await wfArtAssistantFetchMultipartMany(args, id);
                     break;
                 }
                 /** multipart: file bytes come from host upload session, not WebView Base64. */

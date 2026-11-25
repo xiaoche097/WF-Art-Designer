@@ -301,8 +301,12 @@ function bytesToBase64(bytes) {
 
 async function fetchDirect(url, opts = {}) {
     const timeoutRaw = Number(opts.timeoutMs);
-    const controller = Number.isFinite(timeoutRaw) && timeoutRaw > 0 && typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timeoutId = controller ? setTimeout(() => controller.abort(), Math.max(1000, timeoutRaw)) : null;
+    const hasTimeout = Number.isFinite(timeoutRaw) && timeoutRaw > 0;
+    const controller = (hasTimeout || opts.signal) && typeof AbortController !== "undefined" ? new AbortController() : null;
+    const cancel = () => controller?.abort();
+    if (opts.signal?.aborted) cancel();
+    else opts.signal?.addEventListener("abort", cancel, { once: true });
+    const timeoutId = controller && hasTimeout ? setTimeout(cancel, Math.max(1000, timeoutRaw)) : null;
     let response;
     try {
         response = await fetch(url, {
@@ -311,36 +315,45 @@ async function fetchDirect(url, opts = {}) {
             body: opts.body,
             ...(controller ? { signal: controller.signal } : {}),
         });
-    } catch (error) {
-        if (error?.name === "AbortError") throw new Error("请求超时");
-        throw error;
-    } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-    }
-
-    if (opts.returnBinary) {
-        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (opts.returnBinary) {
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            return {
+                ok: response.ok,
+                status: response.status,
+                statusText: response.statusText || "",
+                bodyBase64: bytesToBase64(bytes),
+                contentType: response.headers?.get?.("content-type") || "",
+            };
+        }
         return {
             ok: response.ok,
             status: response.status,
             statusText: response.statusText || "",
-            bodyBase64: bytesToBase64(bytes),
-            contentType: response.headers?.get?.("content-type") || "",
+            body: await response.text(),
         };
+    } catch (error) {
+        if (error?.name === "AbortError" && !opts.signal?.aborted) throw new Error("请求超时");
+        throw error;
+    } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+        opts.signal?.removeEventListener("abort", cancel);
     }
+}
 
-    return {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText || "",
-        body: await response.text(),
-    };
+function callNetwork(method, args, signal) {
+    signal?.throwIfAborted();
+    if (!signal) return call(method, ...args);
+    const { requestId, promise } = rpc(method, args);
+    const cancel = () => { void call("network.cancelFetch", requestId).catch(() => {}); };
+    signal.addEventListener("abort", cancel, { once: true });
+    return promise.finally(() => signal.removeEventListener("abort", cancel));
 }
 
 export async function fetchProxy(url, opts = {}) {
     if (!hasHostEndpoint()) return fetchDirect(url, opts);
     const { method = "GET", headers = {}, body, returnBinary, timeoutMs, hostTimeoutBufferMs } = opts;
-    return call("network.fetch", url, { method, headers, body, returnBinary, timeoutMs, hostTimeoutBufferMs });
+    return callNetwork("network.fetch", [url, { method, headers, body, returnBinary, timeoutMs, hostTimeoutBufferMs,
+        cancellable: Boolean(opts.signal) }], opts.signal);
 }
 
 function safeFormFieldName(value) {
@@ -399,10 +412,17 @@ export function fetchProxyFormData(
     return call("network.fetchFormData", url, formFields || {}, fileBase64, fileName, mimeType, extraHeaders || {}, filePart.field);
 }
 
-export function fetchProxyFormDataMultiFiles(url, formFields, fileParts, extraHeaders) {
+export function fetchProxyFormDataMultiFiles(url, formFields, fileParts, extraHeaders, opts = {}) {
     const parts = (Array.isArray(fileParts) ? fileParts : []).map(normalizeUploadPart).filter((part) => part.base64);
+    if (!hasHostEndpoint() && (opts.signal || opts.timeoutMs)) {
+        const body = new FormData();
+        appendTextFields(body, formFields);
+        for (const part of parts) appendBase64Blob(body, part);
+        return fetchDirect(url, { ...opts, method: "POST", body, headers: multipartHeaders(extraHeaders) });
+    }
     if (!hasHostEndpoint()) return postMultipartDirect(url, formFields || {}, parts, extraHeaders || {});
-    return call("network.fetchFormDataMultiFiles", url, formFields || {}, parts, extraHeaders || {});
+    return callNetwork("network.fetchFormDataMultiFiles", [url, formFields || {}, parts, extraHeaders || {},
+        { timeoutMs: opts.timeoutMs, hostTimeoutBufferMs: opts.hostTimeoutBufferMs, cancellable: Boolean(opts.signal) }], opts.signal);
 }
 
 export function fetchProxyFormDataFromUploadSession(

@@ -28,6 +28,7 @@ import { readCompatLocalStorage, removeCompatLocalStorage } from "../utils/stora
 import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js";
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
 import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
+import { bananaCancelled, retryBananaOperation } from "./bananaRetry.js";
 import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
 import { getLibraryCategory, libraryCatalog, libraryCategories } from "../prompt-library/catalog.js";
 import { imageModelKind } from "./imageModelFilter.js";
@@ -472,7 +473,7 @@ function BananaQueueCard({ runs, onDismiss, onRetryPlace }) {
                     <TaskPreviewThumb src={run.pendingUploads?.main?.previewBase64} title="查看任务大图" />
                     <div className="rh-task-status-wrapper"><div className={`rh-task-status ${run.status === "success" ? "success" : run.status === "running" ? "running" : run.status === "cancelled" ? "warning" : "error"}`} /></div>
                     <div className="rh-task-info"><div className="rh-task-name">{name}</div><div className="rh-task-meta"><span className={`rh-task-platform-badge rh-task-platform-badge--${platform}`}>{platformLabel}</span><span className="rh-task-time">{time} 提交</span><span className="rh-task-duration">{duration}</span></div><div className="rh-task-progress">{formatRunStatus(run)}{batch && <span className="rh-task-stage" title={batch}>{batch}</span>}{run.stageText && <span className="rh-task-stage">{run.stageText}</span>}</div></div>
-                    <div className="rh-task-actions">{pending && <button type="button" className="rh-task-retry" onClick={() => onRetryPlace?.(run.platform || "banana", run.id)} title="贴回图片">↗</button>}<button type="button" className="rh-task-close" onClick={() => onDismiss?.(run.platform || "banana", run.id)} title="关闭任务">×</button></div>
+                    <div className="rh-task-actions">{pending && <button type="button" className="rh-task-retry" onClick={() => onRetryPlace?.(run.platform || "banana", run.id)} title="贴回图片">↗</button>}<button type="button" className="rh-task-close" onClick={() => onDismiss?.(run.platform || "banana", run.id)} title={run.status === "running" && run.platform !== "comfy" && run.platform !== "runninghub" ? "取消生成和重试" : "关闭任务"}>×</button></div>
                 </div>;
             })}
         </div></div>
@@ -924,8 +925,9 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const [submitting, setSubmitting] = useState(false);
     const [statusText, setStatusText] = useState("");
     const [probeResult, setProbeResult] = useState(null);
-    const cancelRefs = useRef({});
+    const runControllers = useRef(new Map());
     const submitBusyRef = useRef(null);
+    const saveQueueRef = useRef(Promise.resolve());
     const autoPlaceQueueRef = useRef(Promise.resolve());
     const { confirmCaptureSelection, warningDialog } = useSquareSelectionWarning(pushStatus);
     const isHome = page === "home";
@@ -1129,44 +1131,79 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const task = { model, size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, openAiSizeMode, prompt: promptSnapshot, timeoutMs };
         setPromptHistory((items) => addPromptHistoryItem(items, prompt));
         setPrompt("");
-        cancelRefs.current[runId] = false;
+        const controller = new AbortController();
+        const { signal } = controller;
+        runControllers.current.set(runId, controller);
         setSubmitting(true);
         setStatusText(total > 1 ? `并发执行中 0/${total}` : "正在提交");
         setRuns((items) => [...items, { id: runId, status: "running", progress: 5, stageText: "准备任务", startTime: Date.now(), elapsedSec: 0, provider, providerName: supplierName, model, total, doneCount: 0, failedCount: 0, batchTotal: total, batchImageTotal: total, batchDone: 0, pendingUploads: Object.fromEntries(imageEntries.map((entry) => [entry.key, entry.record])) }]);
         try {
             updateRun(runId, { stageText: `线路 ${runConfig.endpointLabel || runConfig.baseUrl}`, progress: 10 });
-            let settled = 0;
-            const requests = Array.from({ length: total }, (_, index) => runBananaImage(runConfig, task, requestImages)
-                .then((urls) => ({ index, urls }), (error) => ({ index, error }))
-                .then((result) => {
-                    settled += 1;
-                    updateRun(runId, { stageText: total > 1 ? `并发执行中 ${settled}/${total}` : "执行中", progress: Math.min(70, 12 + Math.round(settled * 48 / total)) });
-                    setStatusText(total > 1 ? `并发执行中 ${settled}/${total}` : "执行中");
-                    return result;
-                }));
-            releaseSubmitLock();
-            const results = await Promise.all(requests);
-            if (cancelRefs.current[runId]) throw new Error("已取消");
-            updateRun(runId, { stageText: total > 1 ? "并发结束，统一保存回图" : "保存回图", progress: 74 });
-            setStatusText(total > 1 ? "并发结束，统一回传" : "保存回图");
             const token = getEffectiveResultFolderToken(RESULT_WORKBENCH_BANANA);
             const folder = token ? await uxpFs.getEntryForPersistentToken(token) : await getTempResultFolder();
             const placeToken = token || folder?.token || null;
             if (!folder || !placeToken) throw new Error("无法访问回图缓存目录");
-            const saved = [];
+            if (signal.aborted) throw bananaCancelled();
             let complete = 0;
             let failed = 0;
-            for (const result of results) {
-                if (cancelRefs.current[runId]) throw new Error("已取消");
-                if (result.error) { failed += 1; updateRun(runId, { failedCount: failed, stageText: result.error?.message || "子任务失败" }); continue; }
-                for (const url of result.urls) {
-                    const file = await saveImageWithBounds(folder, url, saved.length + 1, { bounds: placeContext?.bounds ?? null, docId: placeContext?.docId ?? null, runningHubAppName: "织影", resultSidecar: { platform: "banana", provider, model } });
-                    saved.push(file.fileName);
+            let savedCount = 0;
+            let nextFileIndex = 0;
+            const updateStage = (text) => {
+                if (signal.aborted) return;
+                updateRun(runId, { stageText: text });
+                setStatusText(text);
+            };
+            const requests = Array.from({ length: total }, async (_, index) => {
+                const files = [];
+                const prefix = total > 1 ? `第 ${index + 1} 张 · ` : "";
+                const retryNotice = stage => ({ attempt, delayMs, error }) =>
+                    updateStage(`${prefix}${stage}重试 ${attempt} 次，${Math.round(delayMs / 1000)} 秒后继续 · ${String(error?.message || error).slice(0, 110)}`);
+                try {
+                    const urls = await retryBananaOperation(() => runBananaImage(runConfig, { ...task, signal,
+                        onPoll: () => updateStage(`${prefix}正在接收供应商任务结果`),
+                        onPollRetry: retryNotice("查询"),
+                    }, requestImages), { signal, onRetry: retryNotice("生成") });
+                    updateStage(`${prefix}保存回图`);
+                    for (const url of urls) {
+                        const fileIndex = ++nextFileIndex;
+                        const file = await retryBananaOperation(() => {
+                            const save = saveQueueRef.current.then(async () => {
+                                if (signal.aborted) throw bananaCancelled();
+                                try {
+                                    return await saveImageWithBounds(folder, url, fileIndex, {
+                                        bounds: placeContext?.bounds ?? null, docId: placeContext?.docId ?? null,
+                                        runningHubAppName: "织影", fileNameSuffix: runId, resultSidecar: { platform: "banana", provider, model },
+                                    });
+                                } catch (error) {
+                                    if (/图片下载失败/.test(error?.message || "")) {
+                                        throw Object.assign(new Error("供应商图片下载失败，请检查网络或图片链接"), { retryable: false });
+                                    }
+                                    throw error;
+                                }
+                            });
+                            saveQueueRef.current = save.catch(() => {});
+                            return save;
+                        }, { signal, onRetry: retryNotice("回图") });
+                        files.push(file.fileName);
+                        savedCount += 1;
+                        notifyResultFilesChanged({ folderToken: placeToken });
+                    }
+                    complete += 1;
+                    return { files };
+                } catch (error) {
+                    failed += 1;
+                    return { files, error };
+                } finally {
+                    if (!signal.aborted) {
+                        updateRun(runId, { progress: Math.min(92, 10 + Math.round((complete + failed) * 82 / total)),
+                            doneCount: complete, failedCount: failed, batchDone: savedCount, batchImageTotal: Math.max(total, savedCount) });
+                    }
                 }
-                complete += 1;
-                notifyResultFilesChanged({ folderToken: placeToken });
-                updateRun(runId, { progress: Math.min(92, 75 + Math.round(complete * 17 / total)), doneCount: complete, failedCount: failed, batchDone: saved.length, batchImageTotal: Math.max(total, saved.length), stageText: total > 1 ? `统一保存 ${complete}/${total}` : "保存回图" });
-            }
+            });
+            releaseSubmitLock();
+            const results = await Promise.all(requests);
+            if (signal.aborted) throw bananaCancelled();
+            const saved = results.flatMap(item => item.files);
             if (!saved.length) throw results.find((item) => item.error)?.error || new Error("没有成功返回图片");
             const autoReturn = readAutoReturnEnabled();
             const concurrentGroupOn = readConcurrentReturnGroupEnabled();
@@ -1181,18 +1218,18 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             playSound({ fileName: readSuccessSoundFile(sharedSettings.successSoundFile) });
 
         } catch (error) {
-            const cancelled = cancelRefs.current[runId] === true || String(error?.message || "") === "已取消";
+            const cancelled = signal.aborted || error?.name === "AbortError";
             updateRun(runId, { status: cancelled ? "cancelled" : "error", progress: 100, stageText: error?.message || String(error), completedAt: Date.now() });
             setStatusText(cancelled ? "已取消" : `运行失败：${error?.message || error}`);
             if (!cancelled) playSoundFail({ fileName: readFailSoundFile(sharedSettings.failSoundFile) });
         } finally {
-            delete cancelRefs.current[runId];
+            runControllers.current.delete(runId);
             releaseSubmitLock();
         }
     }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, openAiSizeMode, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
 
     const dismiss = useCallback((id) => {
-        cancelRefs.current[id] = true;
+        runControllers.current.get(id)?.abort();
         setRuns((items) => items.filter((item) => item.id !== id));
     }, []);
     const retryPlace = useCallback(async (id) => {
