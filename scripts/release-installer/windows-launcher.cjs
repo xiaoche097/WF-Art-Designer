@@ -24,6 +24,7 @@ function launcherEntries(releaseDir) {
         "[Icons]",
         `Name: "{autoprograms}\\WF美工助手"; Filename: "{app}\\${launcherName}"; WorkingDir: "{app}"`,
         'Name: "{autoprograms}\\WF美工助手 · 启动本地 SAM"; Filename: "{sys}\\WindowsPowerShell\\v1.0\\powershell.exe"; Parameters: "-NoProfile -NoExit -ExecutionPolicy RemoteSigned -File ""{app}\\cloth-engine\\start.ps1"""; WorkingDir: "{app}\\cloth-engine"',
+        'Name: "{autoprograms}\\WF美工助手 · 启动 EcomGen"; Filename: "{sys}\\WindowsPowerShell\\v1.0\\powershell.exe"; Parameters: "-NoProfile -NoExit -ExecutionPolicy RemoteSigned -File ""{app}\\ecomgen\\start.ps1"""; WorkingDir: "{app}\\ecomgen"',
         "",
         "[Run]",
         `Filename: "{app}\\${launcherName}"; Description: "打开 WF 美工助手启动器"; Flags: postinstall nowait skipifsilent runasoriginaluser`,

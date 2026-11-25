@@ -4,6 +4,7 @@ import { usePersistedState } from "../hooks/usePersistedState.js";
 import { referenceFromFile } from "../retouch/recolorImages.js";
 import { buildStoryboard, creativeSuites } from "./storyboard.js";
 import { analyzeTileSeams } from "./tileSeams.js";
+import { EcomGenWorkspace } from "./EcomGenWorkspace.jsx";
 import "./CreativeCenter.css";
 
 const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "" };
@@ -139,15 +140,16 @@ function PatternCheck() {
     </section>;
 }
 
-export function CreativeCenter({ onSend }) {
-    const [page, setPage] = useState("storyboard");
+export function CreativeCenter({ onSend, active }) {
+    const [page, setPage] = useState("ecomgen");
     return <div className="wfa-creative">
         <WorkspaceHeader title="创意中心" />
         <div className="wfa-creative-body">
             <div className="wfa-creative-tabs" role="group" aria-label="创意功能">
-                {[["storyboard", "套图分镜"], ["pattern", "花型验缝"]].map(([id, title]) =>
+                {[["ecomgen", "完整工作台"], ["storyboard", "套图分镜"], ["pattern", "花型验缝"]].map(([id, title]) =>
                     <button key={id} type="button" aria-pressed={page === id} onClick={() => setPage(id)}>{title}</button>)}
             </div>
+            <div hidden={page !== "ecomgen"}><EcomGenWorkspace active={active && page === "ecomgen"} /></div>
             <div hidden={page !== "storyboard"}><Storyboard onSend={onSend} /></div>
             <div hidden={page !== "pattern"}><PatternCheck /></div>
         </div>
