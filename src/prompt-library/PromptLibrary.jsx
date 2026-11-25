@@ -1,16 +1,14 @@
 import React, { useState } from "react";
-import { usePersistedState } from "../hooks/usePersistedState.js";
 import { getLibraryCategory, libraryCatalog, libraryCategories } from "./catalog.js";
 import "./PromptLibrary.css";
 
 const types = [["prompt", "提示词库"], ["style", "风格库"]];
 
-export function PromptLibrary({ onUse, existingPresets }) {
+export function PromptLibrary({ onUse, existingPresets, stored, setStored }) {
     const [kind, setKind] = useState("prompt");
     const [category, setCategory] = useState(libraryCategories.prompt[0][0]);
     const [expanded, setExpanded] = useState(null);
     const [query, setQuery] = useState("");
-    const [stored, setStored] = usePersistedState("wfa_prompt_library_v1", []);
     const [editor, setEditor] = useState(null);
     const [pendingDelete, setPendingDelete] = useState(null);
     const [notice, setNotice] = useState("");

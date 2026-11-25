@@ -983,6 +983,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
     const [zhiyingPrompt, setZhiyingPrompt] = useState("");
     const [libraryUse, setLibraryUse] = useState(0);
     const [zhiyingPresets, setZhiyingPresets] = useState([]);
+    const [personalLibrary, setPersonalLibrary] = usePersistedState("wfa_prompt_library_v1", []);
     const storedProduct = activeProduct === "forge" ? "retouch" : activeProduct;
     const activeProductMode = PRODUCT_MODE_ORDER.find(({ id }) => id === storedProduct)?.id ?? "runninghub";
     const changeProduct = useCallback((mode) => {
@@ -1332,7 +1333,8 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                 />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "prompt-library"}>
-                <PromptLibrary onUse={useLibraryText} existingPresets={zhiyingPresets} />
+                <PromptLibrary onUse={useLibraryText} existingPresets={zhiyingPresets}
+                    stored={personalLibrary} setStored={setPersonalLibrary} />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "ps-tools"}>
                 <PsTools />
@@ -1347,6 +1349,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                     setPrompt={setZhiyingPrompt}
                     libraryUse={libraryUse}
                     onPromptPresetsChange={setZhiyingPresets}
+                    personalLibrary={personalLibrary}
                     onChangeProduct={changeProduct}
                     sharedSettings={{
                         pushStatus,

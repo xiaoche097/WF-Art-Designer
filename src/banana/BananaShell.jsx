@@ -29,6 +29,7 @@ import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js"
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
 import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
 import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
+import { getLibraryCategory, libraryCatalog, libraryCategories } from "../prompt-library/catalog.js";
 import { imageModelKind } from "./imageModelFilter.js";
 import { CUSTOM, EMPTY_PROFILE, ZHIYING, ZhiyingAccountSettings } from "./ZhiyingAccountSettings.jsx";
 import { DEFAULT_BANANA_PROMPT_PRESET_FILES } from "./defaultBananaPromptPresetBundle.js";
@@ -478,31 +479,57 @@ function BananaQueueCard({ runs, onDismiss, onRetryPlace }) {
     </div>;
 }
 
-function BananaPromptPresetMenu({ presets, presetName, setPresetName, currentPrompt, onSelect, onSave, onDelete }) {
-    const items = Array.isArray(presets) ? presets : [];
+const promptCategoryLabels = Object.fromEntries(libraryCategories.prompt);
+
+function BananaPromptPresetMenu({ presets, personalLibrary, pinned, onPin, presetName, setPresetName, currentPrompt, onSelect, onSave, onDelete }) {
+    const [query, setQuery] = useState("");
+    const keywords = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const pinOrder = new Map((Array.isArray(pinned) ? pinned : []).map((id, index) => [id, index]));
+    const rank = id => pinOrder.get(id) ?? pinOrder.size;
+    const listRef = useRef(null);
+    const items = [
+        ...presets.map(item => ({ ...item, key: "preset:" + item.id })),
+        ...libraryCatalog.prompt.map(item => ({ ...item, key: "library:" + item.id, prompt: item.text, fromLibrary: true })),
+        ...(Array.isArray(personalLibrary) ? personalLibrary : [])
+            .filter(item => item?.kind === "prompt" && item.id && item.name && item.text)
+            .map(item => ({ ...item, key: "personal:" + item.id, prompt: item.text, category: "personal", fromLibrary: true })),
+    ].filter(item => {
+        if (!keywords.length) return !item.fromLibrary || pinOrder.has(item.key);
+        const text = [item.name, item.prompt, item.tag, promptCategoryLabels[getLibraryCategory(item)]]
+            .join(" ").toLocaleLowerCase();
+        return keywords.every(keyword => text.includes(keyword));
+    }).sort((a, b) => rank(a.key) - rank(b.key));
     const canSave = String(currentPrompt || "").trim() && String(presetName || "").trim();
     return (
-        <div className="banana-prompt-preset-menu" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-            <div className="banana-prompt-preset-save">
-                <input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="预设名称" />
-                <button type="button" disabled={!canSave} onClick={onSave}>保存</button>
+        <div className="banana-prompt-preset-menu banana-prompt-search-menu" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+            <div className="banana-prompt-preset-fields">
+                <input className="banana-prompt-preset-search" type="search" value={query}
+                    aria-label="搜索预设和提示词库" placeholder="搜索预设和提示词库"
+                    onChange={event => setQuery(event.target.value)} />
+                <div className="banana-prompt-preset-save">
+                    <input value={presetName} onChange={(event) => setPresetName(event.target.value)} aria-label="预设名称" placeholder="预设名称" />
+                    <button type="button" disabled={!canSave} onClick={onSave}>保存</button>
+                </div>
             </div>
-            <div className="banana-prompt-preset-list">
+            <div ref={listRef} className="banana-prompt-preset-list">
                 {!items.length ? (
-                    <div className="banana-prompt-preset-empty">暂无提示词预设</div>
+                    <div className="banana-prompt-preset-empty" role="status">{keywords.length ? "没有匹配的提示词" : "搜索提示词库，或保存当前提示词。"}</div>
                 ) : items.map((item) => (
-                    <div key={item.id} className="banana-prompt-preset-item">
+                    <div key={item.key} className="banana-prompt-preset-item">
                         <button type="button" className="banana-prompt-preset-select" onClick={() => onSelect(item)} title={item.prompt || item.name}>
-                            {item.name}
+                            <span>{item.name}</span>
+                            {item.fromLibrary && <small>提示词库</small>}
                         </button>
-                        <button
-                            type="button"
-                            className="banana-prompt-preset-delete"
-                            title="删除预设"
-                            onClick={() => onDelete(item.id)}
-                        >
-                            ×
+                        <button type="button" className="banana-prompt-preset-pin" aria-label={`置顶 ${item.name}`}
+                            aria-pressed={pinOrder.has(item.key)} title={pinOrder.has(item.key) ? "取消置顶" : "置顶"}
+                            onClick={() => {
+                                onPin(item.key);
+                                if (!pinOrder.has(item.key) && listRef.current) listRef.current.scrollTop = 0;
+                            }}>
+                            <span aria-hidden="true">{pinOrder.has(item.key) ? "♥" : "♡"}</span>
                         </button>
+                        {!item.fromLibrary && <button type="button" className="banana-prompt-preset-delete"
+                            aria-label={`删除预设 ${item.name}`} title="删除预设" onClick={() => onDelete(item.id)}>×</button>}
                     </div>
                 ))}
             </div>
@@ -663,11 +690,15 @@ function BananaHome({ state, actions, libraryUse }) {
         <div ref={promptPresetMenuRef} className="banana-prompt-preset-menu-portal" style={promptPresetMenuStyle}>
             <BananaPromptPresetMenu
                 presets={state.promptPresets}
+                personalLibrary={state.personalLibrary}
+                pinned={state.pinnedPresets}
+                onPin={actions.togglePinnedPreset}
                 presetName={promptPresetName}
                 setPresetName={setPromptPresetName}
                 currentPrompt={state.prompt}
                 onSelect={(item) => {
-                    actions.setPrompt(item.prompt || "");
+                    actions.setPrompt(item.fromLibrary && state.prompt.trim()
+                        ? `${state.prompt.trimEnd()}\n\n${item.prompt}` : item.prompt);
                     setPromptPresetOpen(false);
                 }}
                 onSave={async () => {
@@ -828,7 +859,7 @@ function BananaHome({ state, actions, libraryUse }) {
     </div>;
 }
 
-export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions, prompt, setPrompt, libraryUse, onPromptPresetsChange }) {
+export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions, prompt, setPrompt, libraryUse, onPromptPresetsChange, personalLibrary }) {
     const { pushStatus } = sharedSettings;
     const [page, setPage] = useState("home");
     useEffect(() => { if (libraryUse) setPage("home"); }, [libraryUse]);
@@ -879,6 +910,11 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const [concurrency, setConcurrency] = usePersistedState("banana_concurrency", 1);
     const [timeoutSec, setTimeoutSec] = usePersistedState("banana_timeout_sec", 600);
     const [promptPresets, setPromptPresets] = useState([]);
+    const [pinnedPresets, setPinnedPresets] = usePersistedState("banana_prompt_pins_v1", []);
+    const togglePinnedPreset = (id) => setPinnedPresets(current => {
+        const ids = Array.isArray(current) ? current : [];
+        return ids.includes(id) ? ids.filter(key => key !== id) : [id, ...ids];
+    });
     const [promptHistory, setPromptHistory] = usePersistedState("banana_prompt_history", []);
     const [pendingUpload, setPendingUpload] = usePersistedState("banana_pending_upload", null);
     const [multiImageMode, setMultiImageMode] = usePersistedState("banana_multi_image_mode", false);
@@ -992,7 +1028,8 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             return;
         }
         pushStatus("已删除提示词预设", 2200);
-    }, [normalizedPromptPresets, pushStatus]);
+        setPinnedPresets(current => Array.isArray(current) ? current.filter(key => key !== "preset:" + id) : []);
+    }, [normalizedPromptPresets, pushStatus, setPinnedPresets]);
 
     const capture = useCallback(async (slotKey = BANANA_MAIN_IMAGE_SLOT) => {
         if (capturing) return;
@@ -1174,8 +1211,8 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const retryQueue = useCallback((platform, id) => onRetrySharedPlace ? onRetrySharedPlace(platform, id) : retryPlace(id), [onRetrySharedPlace, retryPlace]);
     let endpointLabel = "未配置";
     try { endpointLabel = new URL(profile.baseUrl).host; } catch {}
-    const state = { provider, modelId, supplierName, providerOptions, providerNames, models, imageSelection, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
-    const actions = { setProvider, setModel: (value) => updateProfile("model", value), setImageOption, setConcurrency, setTimeoutSec, setPrompt, setMultiImageMode, savePromptPreset, deletePromptPreset, refresh, capture, clearCapture, run, dismiss: dismissQueue, retryPlace: retryQueue };
+    const state = { provider, modelId, supplierName, providerOptions, providerNames, models, imageSelection, concurrency, timeoutSec, prompt, promptPresets: normalizedPromptPresets, personalLibrary, pinnedPresets, promptHistory, pendingUpload, multiImageMode, multiUploads, capturing, submitting, refreshing, statusText, progress: [...runs].reverse().find((run) => run.status === "running")?.progress || 0, queueRuns, endpointLabel, probeResult };
+    const actions = { setProvider, setModel: (value) => updateProfile("model", value), setImageOption, setConcurrency, setTimeoutSec, setPrompt, setMultiImageMode, savePromptPreset, deletePromptPreset, togglePinnedPreset, refresh, capture, clearCapture, run, dismiss: dismissQueue, retryPlace: retryQueue };
     return <>
         {warningDialog}
         <BananaTopBar supplier={supplierName} loading={refreshing} onRefresh={refresh} isSettingsOpen={!isHome} onToggleView={() => setPage((current) => current === "home" ? "settings" : "home")} />
