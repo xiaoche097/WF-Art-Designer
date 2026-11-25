@@ -74,7 +74,7 @@
     flex: none;
     margin: 8px auto 0;
     display: grid;
-    grid-template-columns: 1.35fr .78fr 1.12fr 1fr .76fr;
+    grid-template-columns: 1.4fr .7fr 1.12fr 1fr 1fr .7fr;
     gap: 3px;
     padding: 3px;
     align-items: stretch;
@@ -326,6 +326,13 @@
 @media (max-width: 320px) {
     .rh-shell-container { --wf-gutter: 8px; }
     .wfa-workspace-header .rh-balance-bar-right { gap: 3px; }
+}
+
+@media (max-width: 390px) {
+    .rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-item {
+        font-size: 10px;
+        padding-inline: 1px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

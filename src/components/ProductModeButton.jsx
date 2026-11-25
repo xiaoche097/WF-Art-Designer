@@ -5,6 +5,7 @@ export const PRODUCT_MODE_ORDER = Object.freeze([
     { id: "runninghub", label: "RunningHub", title: "RunningHub" },
     { id: "banana", label: "织影", title: "织影" },
     { id: "comfy", label: "Comfy UI", title: "Comfy UI" },
+    { id: "prompt-library", label: "提示词库", title: "提示词库" },
     { id: "retouch", label: "精修工具", title: "精修工具" },
     { id: "settings", label: "设置", title: "设置" },
 ]);

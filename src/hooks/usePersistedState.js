@@ -91,6 +91,7 @@ const KEEP_KEY_GROUPS = [
         "rh_api_key_mode",
         "rh_webapp_id",
         "wfa_active_product",
+        "wfa_prompt_library_v1",
         "banana_provider",
         "banana_aji_base_url",
         "banana_active_endpoint_by_provider",

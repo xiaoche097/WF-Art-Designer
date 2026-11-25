@@ -6,6 +6,7 @@ import { useStatus } from "../../utils/StatusContext.jsx";
 import { readCompatLocalStorage, writeCompatLocalStorage } from "../../utils/storageKeyCompat.js";
 import { ComfyShell } from "../../comfy/ComfyShell.jsx";
 import { RetouchShell } from "../../retouch/RetouchShell.jsx";
+import { PromptLibrary } from "../../prompt-library/PromptLibrary.jsx";
 import { BananaShell } from "../../banana/BananaShell.jsx";
 
 function hexToRgb(hex) {
@@ -978,6 +979,9 @@ function RhSettingsPlaceholder({
 export function RunninghubShell({ isActiveProduct = true, browserPreview = false }) {
     const { pushStatus } = useStatus();
     const [activeProduct, setActiveProduct] = usePersistedState("wfa_active_product", "runninghub");
+    const [zhiyingPrompt, setZhiyingPrompt] = useState("");
+    const [libraryUse, setLibraryUse] = useState(0);
+    const [zhiyingPresets, setZhiyingPresets] = useState([]);
     const storedProduct = activeProduct === "forge" ? "retouch" : activeProduct;
     const activeProductMode = PRODUCT_MODE_ORDER.find(({ id }) => id === storedProduct)?.id ?? "runninghub";
     const changeProduct = useCallback((mode) => {
@@ -986,6 +990,12 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
         setActiveProduct(next.id);
         pushStatus(`已切换到${next.title}`, 2500);
     }, [pushStatus, setActiveProduct]);
+    const useLibraryText = useCallback((text) => {
+        setZhiyingPrompt(current => current.trim() ? `${current.trimEnd()}\n\n${text}` : text);
+        setLibraryUse(count => count + 1);
+        changeProduct("banana");
+        pushStatus("已追加到织影提示词", 2500);
+    }, [changeProduct, pushStatus]);
     const [inputFontSize, setInputFontSize] = useState(13);
     const loadFontSize = useCallback(() => {
         const savedFontSize = readCompatLocalStorage("wfa_input_font_size");
@@ -1320,12 +1330,19 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                     onRegisterTaskActions={registerComfyTaskActions}
                 />
             </div>
+            <div className="wfa-workspace" hidden={activeProductMode !== "prompt-library"}>
+                <PromptLibrary onUse={useLibraryText} existingPresets={zhiyingPresets} />
+            </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />
             </div>
             <div className="wfa-workspace banana-product-panel" style={{ display: activeProductMode === "banana" ? "flex" : "none", flex: "0 0 auto", minHeight: 0, flexDirection: "column" }}>
                 <BananaShell
                     activeProduct={activeProductMode}
+                    prompt={zhiyingPrompt}
+                    setPrompt={setZhiyingPrompt}
+                    libraryUse={libraryUse}
+                    onPromptPresetsChange={setZhiyingPresets}
                     onChangeProduct={changeProduct}
                     sharedSettings={{
                         pushStatus,

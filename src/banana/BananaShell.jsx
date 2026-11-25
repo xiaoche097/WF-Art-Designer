@@ -529,11 +529,23 @@ function BananaPromptHistoryMenu({ history, onSelect }) {
     );
 }
 
-function BananaHome({ state, actions }) {
+function BananaHome({ state, actions, libraryUse }) {
     const [paramsOpen, setParamsOpen] = useState(false);
     const [paramMenuStyle, setParamMenuStyle] = useState(null);
     const [captureOpen, setCaptureOpen] = useState(true);
     const [promptOpen, setPromptOpen] = useState(true);
+    const promptInput = useRef(null);
+    useEffect(() => {
+        if (!libraryUse) return undefined;
+        setPromptOpen(true);
+        const frame = requestAnimationFrame(() => {
+            const field = promptInput.current;
+            field?.focus({ preventScroll: true });
+            field?.setSelectionRange(field.value.length, field.value.length);
+            field?.scrollIntoView({ block: "nearest" });
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [libraryUse]);
     const [promptPresetOpen, setPromptPresetOpen] = useState(false);
     const [promptHistoryOpen, setPromptHistoryOpen] = useState(false);
     const [promptPresetMenuStyle, setPromptPresetMenuStyle] = useState(null);
@@ -808,15 +820,16 @@ function BananaHome({ state, actions }) {
                     document.body
                 )
                 : null}
-            <div className={`card-content ${promptOpen ? "" : "collapsed"}`}><textarea className="banana-prompt-textarea" value={state.prompt} onChange={(event) => actions.setPrompt(event.target.value)} placeholder="描述想要生成或修改的图像效果..." /></div>
+            <div className={`card-content ${promptOpen ? "" : "collapsed"}`}><textarea ref={promptInput} aria-label="织影提示词" className="banana-prompt-textarea" value={state.prompt} onChange={(event) => actions.setPrompt(event.target.value)} placeholder="描述想要生成或修改的图像效果..." /></div>
         </div>
         <BananaQueueCard runs={state.queueRuns} onDismiss={actions.dismiss} onRetryPlace={actions.retryPlace} />
     </div>;
 }
 
-export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions }) {
+export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions, prompt, setPrompt, libraryUse, onPromptPresetsChange }) {
     const { pushStatus } = sharedSettings;
     const [page, setPage] = useState("home");
+    useEffect(() => { if (libraryUse) setPage("home"); }, [libraryUse]);
     const [selectedProvider, setProvider] = usePersistedState("banana_provider", ZHIYING);
     const [builtInProfile, setBuiltInProfile] = usePersistedState("banana_zhiying_profile", EMPTY_PROFILE);
     const [savedProviders, setSavedProviders] = usePersistedState("banana_custom_providers", []);
@@ -861,7 +874,6 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     };
     const [concurrency, setConcurrency] = usePersistedState("banana_concurrency", 1);
     const [timeoutSec, setTimeoutSec] = usePersistedState("banana_timeout_sec", 600);
-    const [prompt, setPrompt] = useState("");
     const [promptPresets, setPromptPresets] = useState([]);
     const [promptHistory, setPromptHistory] = usePersistedState("banana_prompt_history", []);
     const [pendingUpload, setPendingUpload] = usePersistedState("banana_pending_upload", null);
@@ -879,6 +891,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     const isHome = page === "home";
     const config = profile;
     const normalizedPromptPresets = useMemo(() => (Array.isArray(promptPresets) ? promptPresets : []).filter((item) => item?.id && item?.name && item?.prompt), [promptPresets]);
+    useEffect(() => { onPromptPresetsChange?.(normalizedPromptPresets); }, [normalizedPromptPresets, onPromptPresetsChange]);
     const updateRun = useCallback((id, patch) => setRuns((items) => items.map((item) => item.id === id ? { ...item, ...patch, elapsedSec: elapsedSeconds(item.startTime) } : item)), []);
 
     useEffect(() => { removeCompatLocalStorage("banana_prompt"); }, []);
@@ -1162,7 +1175,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     return <>
         {warningDialog}
         <BananaTopBar supplier={supplierName} loading={refreshing} onRefresh={refresh} isSettingsOpen={!isHome} onToggleView={() => setPage((current) => current === "home" ? "settings" : "home")} />
-        <div className="banana-home-panel" style={{ display: isHome ? "flex" : "none", flex: "0 0 auto", minHeight: 0, flexDirection: "column" }}><BananaHome state={state} actions={actions} /></div>
+        <div className="banana-home-panel" style={{ display: isHome ? "flex" : "none", flex: "0 0 auto", minHeight: 0, flexDirection: "column" }}><BananaHome state={state} actions={actions} libraryUse={libraryUse} /></div>
         <div style={{ display: isHome ? "none" : "block", flex: 1, minHeight: 0 }}>
             <div className="banana-settings-wrap">
                 <SettingsCard cardClass="rh-config-card banana-account-card" title="账户管理" defaultOpen>
