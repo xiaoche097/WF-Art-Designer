@@ -608,6 +608,7 @@ function objectInfoInputSpec(objectInfo, classType, inputName) {
 }
 
 function knownWidgetNames(classType) {
+    if (/^easy imageColorMatch$/i.test(classType)) return ["method", "image_output", "save_prefix"];
     if (/^LoadImage$/i.test(classType)) return ["image"];
     if (/^LoadImageMask$/i.test(classType)) return ["image", "channel"];
     if (/(load|upload|input|source).*image|image.*(load|upload|input|source)|photoshop.*(image|layer)|(image|layer).*photoshop/i.test(classType)) return ["image"];
@@ -672,6 +673,12 @@ function cleanedWidgetValues(node, names = [], objectInfo = null) {
 
 function normalizeComfyInputValue(value, spec) {
     const type = comfySpecType(spec);
+    if (type === "LIST" && typeof value === "string") {
+        const options = comfySpecOptions(spec);
+        if (options.includes(value)) return value;
+        const equivalents = options.filter(option => option.toLowerCase() === value.trim().toLowerCase());
+        return equivalents.length === 1 ? equivalents[0] : value;
+    }
     if (type !== "INT" && type !== "INTEGER" && type !== "FLOAT" && type !== "NUMBER") return value;
     const number = Number(value);
     if (!Number.isFinite(number)) return value;
@@ -878,10 +885,14 @@ function looksImageSourceNode(node) {
     return /(load|upload|input|source).*image|image.*(load|upload|input|source)|photoshop|layer/.test(text) || /((上传|导入|输入).*(图像|图片|照片)|(图像|图片|照片).*(上传|导入|输入))/.test(text);
 }
 
-function looksImageInput(node, inputName, value) {
-    if (isLinkedInput(value)) return false;
+function isComfyImageFileInput(node, inputName, value, spec) {
+    if (isImageOutputNode(node) || isLinkedInput(value)) return false;
     const name = String(inputName || "").toLowerCase();
+    // Easy-Use uses image_output for the Preview/Save dropdown. IMAGE sockets take links.
+    if (name === "image_output" || comfySpecType(spec) === "IMAGE") return false;
+    if (comfySpecType(spec) === "IMAGEUPLOAD" || comfySpecConfig(spec).image_upload === true) return true;
     const imageSource = looksImageSourceNode(node);
+    if (comfySpecType(spec) === "LIST") return imageSource && name === "image";
     const imageValue = value == null || typeof value === "string" || (imageSource && looksImageFieldName(name));
     if (!imageValue) return false;
     if (looksImageFieldName(name) && imageSource) return true;
@@ -896,13 +907,14 @@ function comfyInputSpec(objectInfo, node, inputName) {
 
 function comfySpecType(spec) {
     const raw = Array.isArray(spec) ? spec[0] : spec;
-    if (Array.isArray(raw)) return "LIST";
+    if (Array.isArray(raw) || raw === "COMBO") return "LIST";
     return raw == null ? "" : String(raw).toUpperCase();
 }
 
 function comfySpecOptions(spec) {
     const raw = Array.isArray(spec) ? spec[0] : null;
-    return Array.isArray(raw) ? raw.map(String) : [];
+    const options = Array.isArray(raw) ? raw : comfySpecConfig(spec).options;
+    return Array.isArray(options) ? options.map(String) : [];
 }
 
 function comfySpecConfig(spec) {
@@ -1023,6 +1035,7 @@ export function analyzeComfyPrompt(prompt, objectInfo, selectorRows = []) {
     const autoImageRows = [];
     const paramRows = [];
     const autoParamRows = [];
+    const invalidChoiceRows = [];
     const nodes = objectOrNull(prompt) || {};
     for (const [nodeId, node] of Object.entries(nodes)) {
         const inputs = objectOrNull(node?.inputs) || {};
@@ -1035,7 +1048,7 @@ export function analyzeComfyPrompt(prompt, objectInfo, selectorRows = []) {
             const inputMeta = inputMetaInfo(node, inputName);
             const marker = inputMarker || nodeMarker;
             const spec = comfyInputSpec(objectInfo, node, inputName);
-            const specType = comfySpecType(spec);
+            const options = comfySpecType(spec) === "LIST" ? comfySpecOptions(spec) : [];
             const base = {
                 nodeId,
                 fieldName: inputName,
@@ -1048,15 +1061,20 @@ export function analyzeComfyPrompt(prompt, objectInfo, selectorRows = []) {
                 description: fieldTitle(nodeId, node, inputName, marker),
                 fieldValue: value == null ? "" : String(value),
             };
-            if (!isImageOutputNode(node) && (specType === "IMAGE" || specType === "IMAGEUPLOAD" || looksImageInput(node, inputName, value))) {
+            if (isComfyImageFileInput(node, inputName, value, spec)) {
                 const row = { ...base, label: base.label || nodeDisplayName(nodeId, node), fieldType: "IMAGE" };
                 (marker ? imageRows : autoImageRows).push(row);
             } else {
                 const fieldType = spec ? fieldTypeFromSpec(spec, value) : fieldTypeFromValue(value);
                 if (BLOCKED_PARAM_TYPES.has(fieldType)) continue;
+                if (options.length && !options.includes(String(value))) {
+                    invalidChoiceRows.push({ ...base, fieldType, options, originalType: typeof value,
+                        description: `${nodeId} ${nodeDisplayName(nodeId, node)} · ${inputName}` });
+                    continue;
+                }
                 if (!marker && !isAutoParamCandidate(node, inputName, fieldType)) continue;
                 const numeric = fieldType === "INT" || fieldType === "FLOAT" ? { ...comfyNumericSpec(spec), ...numericRangeFromConfig(inputMeta) } : {};
-                (marker ? paramRows : autoParamRows).push({ ...base, fieldType, options: comfySpecOptions(spec), ...numeric, originalType: typeof value });
+                (marker ? paramRows : autoParamRows).push({ ...base, fieldType, options, ...numeric, originalType: typeof value });
             }
         }
     }
@@ -1067,7 +1085,7 @@ export function analyzeComfyPrompt(prompt, objectInfo, selectorRows = []) {
     const fallbackParams = markedParams.length ? markedParams : sortRows(mergeSourceRows(autoParamRows));
     return {
         imageRows: markedImages.length ? markedImages : fallbackImages,
-        paramRows: [...selectors, ...fallbackParams],
+        paramRows: [...selectors, ...invalidChoiceRows, ...fallbackParams],
     };
 }
 
@@ -1118,8 +1136,8 @@ function fillUnmarkedImageInputs(prompt, imageRows, uploadedByKey, objectInfo) {
         if (isImageOutputNode(node)) continue;
         for (const [name, value] of Object.entries(inputs)) {
             if (explicit.has(`${nodeId}::${name}`) || Array.isArray(value)) continue;
-            const specType = comfySpecType(objectInfoInputSpec(objectInfo, node.class_type, name));
-            if (specType === "IMAGE" || specType === "IMAGEUPLOAD" || looksImageInput(node, name, value)) {
+            const spec = objectInfoInputSpec(objectInfo, node.class_type, name);
+            if (isComfyImageFileInput(node, name, value, spec)) {
                 inputs[name] = fallbackValue;
             }
         }
@@ -1236,8 +1254,10 @@ export function buildComfyPromptForRun(basePrompt, imageRows, paramRows, fieldVa
         if (!value) throw new Error(`请先捕获图像：${imageRowLabel(row, index)}`);
         let applied = false;
         for (const target of rowTargets(row)) {
-            if (!prompt?.[target.nodeId]?.inputs) continue;
-            prompt[target.nodeId].inputs[target.fieldName] = value;
+            const node = prompt?.[target.nodeId];
+            if (!node?.inputs || !isComfyImageFileInput(node, target.fieldName, node.inputs[target.fieldName],
+                comfyInputSpec(objectInfo, node, target.fieldName))) continue;
+            node.inputs[target.fieldName] = value;
             applied = true;
         }
         if (!applied) throw new Error(`工作流图像输入不存在：${imageRowLabel(row, index)}`);
@@ -1253,7 +1273,20 @@ export function buildComfyPromptForRun(basePrompt, imageRows, paramRows, fieldVa
             node.inputs[target.fieldName] = coerceParamValue(node.inputs[target.fieldName], fieldValues[key], objectInfoInputSpec(objectInfo, node.class_type, target.fieldName));
         }
     }
-    return normalizePromptInputs(keepImageOutputPrompt(dropMissingOptionalLinks(prompt, objectInfo)), objectInfo);
+    const prepared = normalizePromptInputs(keepImageOutputPrompt(dropMissingOptionalLinks(prompt, objectInfo)), objectInfo);
+    const invalid = [];
+    for (const [id, node] of Object.entries(prepared)) {
+        for (const [name, value] of Object.entries(node.inputs || {})) {
+            const spec = comfyInputSpec(objectInfo, node, name);
+            if (isLinkedInput(value) || comfySpecType(spec) !== "LIST" || isComfyImageFileInput(node, name, value, spec)) continue;
+            const options = comfySpecOptions(spec);
+            if (options.length && !options.includes(String(value))) {
+                invalid.push(`${id} ${node.class_type} · ${name}：「${String(value).slice(0, 90)}」无效`);
+            }
+        }
+    }
+    if (invalid.length) throw Error(`请选择 Comfy 参数中的有效选项：${invalid.slice(0, 3).join(" | ")}`);
+    return prepared;
 }
 
 export function initialComfyFieldValues(paramRows) {

@@ -71,7 +71,12 @@ function formatComfyNodeErrors(nodeErrors) {
     for (const [nodeId, info] of Object.entries(nodeErrors)) {
         const label = info?.class_type ? `${nodeId} ${info.class_type}` : nodeId;
         const errors = Array.isArray(info?.errors) ? info.errors : [];
-        const message = errors.map((item) => item?.message || item?.type || shortComfyText(item, 160)).filter(Boolean).join("; ");
+        const message = errors.map((item) => {
+            const detail = shortComfyText(item?.details, 210);
+            const field = item?.extra_info?.input_name;
+            const summary = item?.message || item?.type || shortComfyText(item, 160);
+            return detail ? `${summary} · ${detail}` : field ? `${field} · ${summary}` : summary;
+        }).filter(Boolean).join("，");
         parts.push(message ? `${label}: ${message}` : `${label}: ${shortComfyText(info, 240)}`);
         if (parts.length >= 3) break;
     }
