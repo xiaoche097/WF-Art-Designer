@@ -1,4 +1,4 @@
-const IMAGE_MODEL_ID = /^(?:gpt-image|chatgpt-image|dall-e|dalle|seedream|doubao-seedream|imagen|flux|qwen-image|nano-banana|stable-diffusion|sdxl|kolors|ideogram|recraft|hidream|z-image)(?:[-_.\d]|$)|^gemini-[\w.-]+-image(?:[-_.\d]|$)/i;
+const IMAGE_MODEL_ID = /^(?:gpt-image|chatgpt-image|dall-e|dalle|seedream|doubao-seedream|imagen|flux|qwen-image|(?:gemini-)?nano-banana|stable-diffusion|sdxl|kolors|ideogram|recraft|hidream|z-image)(?:[-_.\d]|$)|^gemini-[\w.-]+-image(?:[-_.\d]|$)/i;
 const NON_IMAGE_MODEL_ID = /^(?:sora|veo|seedance|doubao-seedance|kling|hailuo|vidu)(?:[-_.\d]|$)|(?:^|[-_.])(?:video|t2v|i2v|v2v|vision|ocr|caption|captioning|embedding|embeddings|understanding|analysis|classifier|moderation|segmentation|rerank)(?:[-_.\d]|$)/i;
 const TEXT_MODEL_ID = /^(?:gpt-|gemini-|claude-|deepseek-|qwen[-.\d]|grok-|doubao-)/i;
 const IMAGE_OPERATION = /^(?:image|image[_-](?:generation|edit(?:ing)?)|text[_-]to[_-]image|image[_-]to[_-]image|images?\.(?:generations|edits)|generateimage|editimage|t2i|i2i)$/i;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
 import { fetchBananaModels, runBananaImage } from "./bananaApi.js";
+import { imageModelKind } from "./imageModelFilter.js";
 
 test("advertised options override the model catalog and stale selections are removed", () => {
     const options = readModelImageOptions({ capabilities: { image: {
@@ -71,6 +72,7 @@ test("mixed OpenAI-compatible lists keep only identifiable image-output models",
         { id: "zhiying/gpt-image-2" },
         { id: "zhiying/gpt-image-2.5-sunburst" },
         { id: "zhiying/gpt-image-2.5-flare" },
+        { id: "zhiying/gemini-nano-banana-2.1" },
         { id: "zhiying/gpt-5", input_modalities: ["image", "text"], output_modalities: ["text"] },
         { id: "zhiying/kling-image-to-video" },
         { id: "zhiying/doubao-seedance-2-0" },
@@ -81,8 +83,17 @@ test("mixed OpenAI-compatible lists keep only identifiable image-output models",
     const result = await fetchBananaModels({ baseUrl: "https://provider.example", apiKey: "test-key", protocol: "openai" });
     assert.deepEqual(result.models, [
         "zhiying/doubao-seedream-5-0-pro-260628", "zhiying/gpt-image-2", "zhiying/gpt-image-2.5-sunburst",
-        "zhiying/gpt-image-2.5-flare", "zhiying/opaque-alias",
+        "zhiying/gpt-image-2.5-flare", "zhiying/gemini-nano-banana-2.1", "zhiying/opaque-alias",
     ]);
     assert.deepEqual(Object.keys(result.byModel), result.models);
     assert.equal(result.excludedModels.length, 4);
+});
+
+test("manual Gemini Nano Banana IDs are recognized without weakening output checks", () => {
+    const id = "zhiying/gemini-nano-banana-2.1";
+    assert.equal(imageModelKind(id), "image");
+    assert.equal(imageModelKind(id, { output_modalities: ["text", "image"] }), "image");
+    assert.equal(imageModelKind(id, { output_modalities: ["text"] }), "non-image");
+    assert.equal(imageModelKind("zhiying/gemini-nano-banana-2.1-video"), "non-image");
+    assert.equal(imageModelKind("zhiying/gemini-3-flash"), "non-image");
 });
