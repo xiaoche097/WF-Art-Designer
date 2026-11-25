@@ -7,6 +7,7 @@ import { readCompatLocalStorage, writeCompatLocalStorage } from "../../utils/sto
 import { ComfyShell } from "../../comfy/ComfyShell.jsx";
 import { RetouchShell } from "../../retouch/RetouchShell.jsx";
 import { PromptLibrary } from "../../prompt-library/PromptLibrary.jsx";
+import { PsTools } from "../../ps-tools/PsTools.jsx";
 import { BananaShell } from "../../banana/BananaShell.jsx";
 
 function hexToRgb(hex) {
@@ -1332,6 +1333,9 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "prompt-library"}>
                 <PromptLibrary onUse={useLibraryText} existingPresets={zhiyingPresets} />
+            </div>
+            <div className="wfa-workspace" hidden={activeProductMode !== "ps-tools"}>
+                <PsTools />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />

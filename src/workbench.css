@@ -74,7 +74,8 @@
     flex: none;
     margin: 8px auto 0;
     display: grid;
-    grid-template-columns: 1.4fr .7fr 1.12fr 1fr 1fr .7fr;
+    grid-template-columns: minmax(max-content, 1.4fr) minmax(max-content, .7fr) minmax(max-content, 1fr)
+        minmax(max-content, 1.12fr) minmax(max-content, 1fr) minmax(max-content, 1fr) minmax(max-content, .7fr);
     gap: 3px;
     padding: 3px;
     align-items: stretch;
@@ -326,6 +327,13 @@
 @media (max-width: 320px) {
     .rh-shell-container { --wf-gutter: 8px; }
     .wfa-workspace-header .rh-balance-bar-right { gap: 3px; }
+}
+
+@media (max-width: 294px) {
+    .rh-shell-container { scroll-padding-block-start: 90px; }
+    .rh-shell-container:is(.rh-theme-dark, .rh-theme-light) > .wfa-product-mode-panel {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 390px) {

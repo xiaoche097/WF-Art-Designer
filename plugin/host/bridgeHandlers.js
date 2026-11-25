@@ -4,6 +4,7 @@
 import { runAiAppAndWaitInHost } from "./runninghubAiAppRunnerHost.js";
 import retouchHost from "./retouch/retouchHost.js";
 import clothHost from "./retouch/clothHost.js";
+import { runPsScript } from "./psScripts.js";
 import { pluginInstallerUrl } from "../../src/utils/pluginReleases.js";
 import { decodeDuckImageBytes } from "./duckLocalDecoder.js";
 import { Jimp, JimpMime } from "jimp";
@@ -1637,6 +1638,9 @@ export function setupBridge(webviewEl) {
                     result = { ok: true };
                     break;
                 }
+                case "psScripts.run":
+                    result = await runPsScript(args[0]);
+                    break;
                 case "cloth.inspect":
                     result = await clothHost.inspect();
                     break;
