@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
+import { openAiImageSizeFields, readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
 import { fetchBananaModels, runBananaImage } from "./bananaApi.js";
 import { imageModelKind } from "./imageModelFilter.js";
 
@@ -96,4 +96,71 @@ test("manual Gemini Nano Banana IDs are recognized without weakening output chec
     assert.equal(imageModelKind(id, { output_modalities: ["text"] }), "non-image");
     assert.equal(imageModelKind("zhiying/gemini-nano-banana-2.1-video"), "non-image");
     assert.equal(imageModelKind("zhiying/gemini-3-flash"), "non-image");
+});
+
+test("Zhiying uses model-specific options and defaults to 2K when supported", () => {
+    const nano = "zhiying/gemini-nano-banana-2.1";
+    const gpt = "zhiying/gpt-image-2.5-sunburst";
+    const seedream = "zhiying/doubao-seedream-5-0-pro-260628";
+    const cases = [
+        [nano, "gemini", ["1K", "2K", "4K"], 14, ""],
+        [nano, "openai", ["1K", "2K", "4K"], 14, ""],
+        [gpt, "openai", ["1K", "2K", "4K"], 13, "1:1"],
+        [seedream, "openai", ["1K", "2K"], 8, ""],
+    ];
+    for (const [id, protocol, sizes, ratioCount, defaultRatio] of cases) {
+        const options = readModelImageOptions({}, id, protocol);
+        assert.deepEqual(options.sizes, sizes);
+        assert.equal(options.ratios.length, ratioCount);
+        const result = resolveModelImageSelection(options, null, protocol);
+        assert.equal(result.size, "2K");
+        assert.equal(result.aspectRatio, defaultRatio);
+        assert.equal(resolveModelImageSelection(options, { size: "1K", aspectRatio: "16:9" }, protocol).size, "1K");
+    }
+    const restricted = readModelImageOptions({ parameters: { properties: {
+        resolution: { enum: ["1K"] }, size: { enum: ["auto", "9:16"] },
+    } } }, nano, "openai");
+    assert.deepEqual(restricted.sizes, ["1K"]);
+    assert.deepEqual(restricted.ratios, ["9:16"]);
+    assert.equal(resolveModelImageSelection(restricted, null, "openai").size, "1K");
+    assert.equal(resolveModelImageSelection(restricted, { size: "" }, "openai").size, "");
+    assert.deepEqual(readModelImageOptions({ sizes: [], ratios: [] }, nano, "openai").sizes, []);
+    assert.deepEqual(readModelImageOptions({ sizes: ["1024x1536"] }, gpt, "openai"),
+        { sizes: ["1024x1536"], ratios: ["2:3"] });
+});
+
+test("Zhiying tiers and ratios use the request encoding for each model", async context => {
+    const original = globalThis.fetch;
+    context.after(() => { globalThis.fetch = original; });
+    const requests = [];
+    globalThis.fetch = async (url, options) => {
+        requests.push(options.body instanceof FormData ? Object.fromEntries(options.body) : JSON.parse(options.body));
+        return String(url).includes(":generateContent")
+            ? Response.json({ candidates: [{ content: { parts: [{ inlineData: { data: "AQID" } }] } }] })
+            : Response.json({ data: [{ b64_json: "AQID" }] });
+    };
+    const nano = "zhiying/gemini-nano-banana-2.1";
+    const gpt = "zhiying/gpt-image-2.5-sunburst";
+    const seedream = "zhiying/doubao-seedream-5-0-pro-260628";
+    for (const [model, protocol, input] of [
+        [nano, "gemini"], [nano, "openai", { base64: "AQID" }], [gpt, "openai"], [seedream, "openai"],
+    ]) {
+        const { openAiSizeMode } = readModelImageOptions(null, model, protocol);
+        await runBananaImage({ baseUrl: "https://provider.example", apiKey: "test-key", protocol },
+            { model, openAiSizeMode, prompt: "test", size: "2K", aspectRatio: "16:9" }, input);
+    }
+    assert.deepEqual(requests[0].generationConfig.imageConfig, { imageSize: "2K", aspectRatio: "16:9" });
+    assert.equal(requests[1].size, "16:9");
+    assert.equal(requests[1].resolution, "2K");
+    assert.equal(requests[2].size, "2048x1152");
+    assert.equal(requests[2].resolution, undefined);
+    assert.equal(requests[3].size, "2816x1584");
+    const options = readModelImageOptions(null, gpt, "openai");
+    for (const size of options.sizes) for (const aspectRatio of options.ratios) {
+        const fields = openAiImageSizeFields({ size, aspectRatio, openAiSizeMode: options.openAiSizeMode });
+        const [w, h] = fields.size.split("x").map(Number);
+        const [rw, rh] = aspectRatio.split(":").map(Number);
+        assert.equal(w * rh, h * rw);
+        assert.ok(w % 16 === 0 && h % 16 === 0 && Math.max(w,h) <= 3840 && w*h >= 655360 && w*h <= 8294400);
+    }
 });

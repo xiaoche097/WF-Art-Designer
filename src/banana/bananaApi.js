@@ -1,5 +1,5 @@
 import { hostFetch, hostFetchFormDataMultiFiles } from "../bridge/hostNetwork.js";
-import { readModelImageOptions } from "./imageModelOptions.js";
+import { openAiImageSizeFields, readModelImageOptions } from "./imageModelOptions.js";
 import { imageModelKind } from "./imageModelFilter.js";
 
 export const GEMINI_IMAGES = "gemini";
@@ -106,7 +106,7 @@ async function runGemini(config, task, images) {
 
 async function runOpenAi(config, task, images) {
     const { baseUrl, apiKey } = config;
-    const fields = { model: task.model, prompt: task.prompt, n: 1, ...(task.size ? { size: task.size } : {}) };
+    const fields = { model: task.model, prompt: task.prompt, n: 1, ...openAiImageSizeFields(task) };
     const response = images.length
         ? await hostFetchFormDataMultiFiles(
             `${baseUrl}/images/edits`,

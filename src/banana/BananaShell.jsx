@@ -28,7 +28,7 @@ import { readCompatLocalStorage, removeCompatLocalStorage } from "../utils/stora
 import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js";
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
 import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
-import { resolveModelImageSelection } from "./imageModelOptions.js";
+import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
 import { imageModelKind } from "./imageModelFilter.js";
 import { CUSTOM, EMPTY_PROFILE, ZHIYING, ZhiyingAccountSettings } from "./ZhiyingAccountSettings.jsx";
 import { DEFAULT_BANANA_PROMPT_PRESET_FILES } from "./defaultBananaPromptPresetBundle.js";
@@ -562,7 +562,7 @@ function BananaHome({ state, actions, libraryUse }) {
     const activeModel = state.modelId;
     const modelOptions = Array.from(new Set([activeModel, ...state.models])).filter(Boolean);
     const defaultImageValue = activeModel ? "模型默认" : "请先选择模型";
-    const { size, aspectRatio, sizes, ratios } = state.imageSelection;
+    const { size, aspectRatio, sizes, ratios, autoSize = true, autoRatio = true } = state.imageSelection;
     useEffect(() => {
         if (!paramsOpen) return undefined;
         const onMouseDown = (event) => {
@@ -646,11 +646,13 @@ function BananaHome({ state, actions, libraryUse }) {
             <div className="banana-controls">
                 <CustomSelect label="供应商" value={state.provider} displayValue={state.supplierName} options={state.providerOptions} getItemLabel={(item) => state.providerNames[item]} onChange={actions.setProvider} dropdownPlacement="down" useDropdownPortal />
                 <CustomSelect label="模型" value={activeModel} displayValue={activeModel || (modelOptions.length ? "请选择模型" : "请刷新模型")} options={modelOptions} onChange={actions.setModel} dropdownPlacement="down" useDropdownPortal />
-                <CustomSelect label="分辨率" value={size} displayValue={size || defaultImageValue} options={["", ...sizes]}
-                    getItemLabel={(value) => value || "模型默认"} onChange={(value) => actions.setImageOption("size", value)}
+                <CustomSelect label="分辨率" value={size} displayValue={size || (sizes.length ? "自动" : defaultImageValue)}
+                    options={autoSize ? ["", ...sizes] : sizes}
+                    getItemLabel={(value) => value || "自动"} onChange={(value) => actions.setImageOption("size", value)}
                     disabled={!sizes.length} dropdownPlacement="down" useDropdownPortal />
-                <CustomSelect label="比例" value={aspectRatio} displayValue={aspectRatio || defaultImageValue} options={["", ...ratios]}
-                    getItemLabel={(value) => value || "模型默认"} onChange={(value) => actions.setImageOption("aspectRatio", value)}
+                <CustomSelect label="比例" value={aspectRatio} displayValue={aspectRatio || (ratios.length ? "自动" : defaultImageValue)}
+                    options={autoRatio ? ["", ...ratios] : ratios}
+                    getItemLabel={(value) => value || "自动"} onChange={(value) => actions.setImageOption("aspectRatio", value)}
                     disabled={!ratios.length} dropdownPlacement="down" useDropdownPortal />
                 <Stepper label="并发" value={state.concurrency} min={1} max={8} onChange={actions.setConcurrency} />
                 <Stepper label="超时" value={state.timeoutSec} min={60} max={1800} onChange={actions.setTimeoutSec} suffix="s" />
@@ -863,11 +865,13 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         (modelResult?.excludedModels?.includes(selectedModel) === true || imageModelKind(selectedModel) === "non-image");
     const modelId = modelRejected ? "" : selectedModel;
     const imageChoice = profile.imageOptionsByModel?.[modelId] ||
-        (profile.protocol === OPENAI_IMAGES ? null : { size: previousSize });
-    const imageSelection = resolveModelImageSelection(optionsByModel?.[modelId], imageChoice, profile.protocol);
+        (profile.protocol !== OPENAI_IMAGES && previousSize ? { size: previousSize } : null);
+    const modelImageOptions = optionsByModel?.[modelId] ?? readModelImageOptions(null, modelId, profile.protocol);
+    const { openAiSizeMode } = modelImageOptions;
+    const imageSelection = resolveModelImageSelection(modelImageOptions, imageChoice, profile.protocol);
     const setImageOption = (key, value) => {
         if (!modelId) return;
-        const choice = profile.protocol === OPENAI_IMAGES
+        const choice = profile.protocol === OPENAI_IMAGES && !openAiSizeMode
             ? { [key]: value }
             : { size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, [key]: value };
         patchProfile(current => ({ ...current, imageOptionsByModel: { ...current.imageOptionsByModel, [modelId]: choice } }));
@@ -1085,7 +1089,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const timeoutMs = Math.max(60, Number(timeoutSec) || 600) * 1000;
         const placeContext = normalizePlaceContext({ docId: image?.docId, bounds: image?.bounds }) || await recordPlaceContext();
         const promptSnapshot = bananaPromptWithImageLabels(prompt, imageEntries, multiImageMode);
-        const task = { model, size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, prompt: promptSnapshot, timeoutMs };
+        const task = { model, size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, openAiSizeMode, prompt: promptSnapshot, timeoutMs };
         setPromptHistory((items) => addPromptHistoryItem(items, prompt));
         setPrompt("");
         cancelRefs.current[runId] = false;
@@ -1148,7 +1152,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             delete cancelRefs.current[runId];
             releaseSubmitLock();
         }
-    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
+    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, openAiSizeMode, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
 
     const dismiss = useCallback((id) => {
         cancelRefs.current[id] = true;
