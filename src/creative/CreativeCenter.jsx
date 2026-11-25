@@ -2,17 +2,23 @@ import React, { useEffect, useRef, useState } from "react";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.jsx";
 import { usePersistedState } from "../hooks/usePersistedState.js";
 import { referenceFromFile } from "../retouch/recolorImages.js";
+import { storage } from "../bridge/uxpShim.js";
+import { isInWebView } from "../bridge/uxpBridge.js";
+import { loadResultImageBytes } from "../utils/imageSaver.js";
+import { setPngDpi } from "../../plugin/host/wfArtAssistantPngCodec.js";
 import { buildStoryboard, creativeSuites } from "./storyboard.js";
 import { analyzeTileSeams } from "./tileSeams.js";
-import { EcomGenWorkspace } from "./EcomGenWorkspace.jsx";
+import { CreativeImageTool } from "./CreativeImageTool.jsx";
+import { SuiteReverse } from "./SuiteReverse.jsx";
+import { CreativeAssetLibrary } from "./CreativeAssetLibrary.jsx";
 import "./CreativeCenter.css";
 
 const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "" };
 
-function Storyboard({ onSend }) {
+function Storyboard({ onSend, templates, asset, onSaved }) {
     const [stored, setStored] = usePersistedState("wfa_creative_storyboard_v1", initialProject);
     const project = { ...initialProject, ...stored };
-    const shots = buildStoryboard(project);
+    const shots = buildStoryboard(project, templates.find(template => template.id === project.suiteId));
     const selected = shots.find(shot => shot.id === project.activeShot) || shots[0];
     const shotKey = selected && `${project.suiteId}:${selected.id}`;
     const draft = project.edits?.[shotKey] ?? selected?.prompt ?? "";
@@ -28,6 +34,7 @@ function Storyboard({ onSend }) {
             <label>套图方案
                 <select value={project.suiteId} onChange={event => update("suiteId", event.target.value)}>
                     {creativeSuites.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+                    {templates.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
             </label>
             <label>商品名称
@@ -77,13 +84,17 @@ function Storyboard({ onSend }) {
                 </div>
             </>}
         </section>
+        {selected && <CreativeImageTool key={shotKey} label={selected.title} prompt={draft} asset={asset}
+            onSaved={onSaved} assetType="suite" requireReference />}
     </div>;
 }
 
-function PatternCheck() {
+function PatternCheck({ incoming }) {
     const [result, setResult] = useState(null);
     const [status, setStatus] = useState("");
     const [showGuides, setShowGuides] = useState(true);
+    const [paper, setPaper] = useState({ width: "20", height: "20", repeat: "5" });
+    const [exporting, setExporting] = useState(false);
     const sequence = useRef(0);
     const canvas = useRef(null);
     useEffect(() => {
@@ -95,27 +106,84 @@ function PatternCheck() {
         }
     }, [result]);
 
-    async function loadPattern(event) {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        event.target.value = "";
+    async function loadPattern(getFile) {
         const job = ++sequence.current;
         setResult(null);
         setStatus("正在检查花型…");
         try {
+            const file = await getFile();
             const frame = await referenceFromFile(file);
             if (sequence.current !== job) return;
-            setResult({ frame, name: file.name, report: analyzeTileSeams(frame) });
+            setResult({ file, frame, name: file.name, report: analyzeTileSeams(frame) });
             setStatus("");
         } catch (error) {
             if (sequence.current === job) setStatus(error.message || "花型读取失败。");
         }
     }
+    useEffect(() => {
+        if (!incoming) return;
+        void loadPattern(async () => {
+            const { buffer, ext } = await loadResultImageBytes(incoming.url);
+            return new File([buffer], `${incoming.name}.${ext}`);
+        });
+    }, [incoming]);
+
+    async function exportPattern() {
+        const cm = value => Math.round(Number(value) * 300 / 2.54);
+        const width = cm(paper.width), height = cm(paper.height), repeat = cm(paper.repeat);
+        if (![width, height, repeat].every(value => Number.isInteger(value) && value > 0 && value <= 6500) || width * height > 12000000) {
+            setStatus("请调整输出尺寸。单边上限约 55 cm，合计最多 1200 万像素。");
+            return;
+        }
+        setExporting(true);
+        setStatus("");
+        try {
+            const folder = isInWebView() ? await storage.localFileSystem.getFolder() : null;
+            if (isInWebView() && !folder) return;
+            const original = await referenceFromFile(result.file, 2400);
+            const scaled = document.createElement("canvas");
+            scaled.width = original.width;
+            scaled.height = original.height;
+            scaled.getContext("2d").putImageData(original, 0, 0);
+            const tile = document.createElement("canvas");
+            tile.width = repeat;
+            tile.height = Math.max(1, Math.round(repeat * original.height / original.width));
+            if (tile.height > 6500 || tile.width * tile.height > 12000000) throw new Error("重复单元太大，请减小单元宽");
+            tile.getContext("2d").drawImage(scaled, 0, 0, tile.width, tile.height);
+            const output = document.createElement("canvas");
+            output.width = width;
+            output.height = height;
+            const context = output.getContext("2d");
+            context.fillStyle = context.createPattern(tile, "repeat");
+            context.fillRect(0, 0, width, height);
+            const blob = await new Promise(resolve => output.toBlob(resolve, "image/png"));
+            if (!blob || blob.size > 12 * 1024 * 1024) throw new Error("PNG 过大，请减小输出尺寸");
+            const png = setPngDpi(new Uint8Array(await blob.arrayBuffer()), 300);
+            const name = `花型平铺-300dpi-${width}x${height}-${Date.now()}.png`;
+            if (folder) {
+                const file = await folder.createFile(name);
+                await file.write(png, { format: storage.formats.binary, overwrite: false });
+            } else {
+                const url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = name;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+            setStatus(`已导出 300 DPI PNG（${width} × ${height}）。`);
+        } catch (error) { setStatus(error.message || "花型导出失败"); }
+        finally { setExporting(false); }
+    }
 
     return <section className="wfa-creative-card" aria-label="花型验缝">
         <h3>花型验缝</h3>
         <label>选择 PNG、JPG 或 WebP
-            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={loadPattern} />
+            <input type="file" accept="image/png,image/jpeg,image/webp" disabled={exporting} onChange={event => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void loadPattern(() => file);
+            }} />
         </label>
         {status && <p role="status">{status}</p>}
         {result && <>
@@ -136,22 +204,108 @@ function PatternCheck() {
                     role="img" aria-label="花型四宫格平铺预览" />
             </div>
             <p>按缩放图像估算边缘过渡，用四宫格复核细节。</p>
+            <details>
+                <summary>导出印花规格</summary>
+                <div className="wfa-creative-buttons">
+                    {[["width", "成品宽 cm"], ["height", "成品高 cm"], ["repeat", "单元宽 cm"]].map(([key, label]) => <label key={key}>{label}
+                        <input type="number" min="0.1" max="55" step="0.1" value={paper[key]} onChange={event => setPaper({ ...paper, [key]: event.target.value })} />
+                    </label>)}
+                </div>
+                <button type="button" disabled={exporting} onClick={exportPattern}>{exporting ? "正在导出…" : "导出 300 DPI 平铺 PNG"}</button>
+            </details>
         </>}
     </section>;
 }
 
-export function CreativeCenter({ onSend, active }) {
-    const [page, setPage] = useState("ecomgen");
+const patternTasks = {
+    extract: ["从商品图提取", "将参考商品图中真实存在的印花还原成平面图稿。去掉商品轮廓、褶皱、阴影与背景，保持图案轮廓、内部细节、配色与重复规律，输出单张正方形平面图稿。"],
+    draft: ["按主题起稿", "生成一张可作为重复单元使用的平面印花原稿。保持四边连续，均匀分布图案，输出正方形，去掉样机、文字、水印与边框。"],
+    recolor: ["按要求改色", "只修改指定颜色。保留原图案轮廓、纹样密度、元素相对位置与接缝关系，输出一张完整平面图稿。"],
+    variant: ["衍生新款", "基于参考图的主题和风格创作可平铺的新款，输出正方形平面图稿，无产品样机、文字、水印或边框。"],
+};
+
+function PatternStudio({ asset, onSaved }) {
+    const [mode, setMode] = useState("extract");
+    const [notes, setNotes] = useState("");
+    const [inspection, setInspection] = useState(null);
+    const [label, instruction] = patternTasks[mode];
+    const prompt = mode === "draft" && !notes.trim() ? "" : [instruction, notes.trim()].filter(Boolean).join("\n");
+    return <div className="wfa-creative-stack">
+        <section className="wfa-creative-card" aria-label="花型工坊">
+            <h3>花型工坊</h3>
+            <label>操作
+                <select value={mode} onChange={event => setMode(event.target.value)}>
+                    {Object.entries(patternTasks).map(([id, [title]]) => <option key={id} value={id}>{title}</option>)}
+                </select>
+            </label>
+            <label>{mode === "draft" ? "印花主题" : "图案要求"}
+                <textarea rows={2} maxLength={1000} value={notes} onChange={event => setNotes(event.target.value)} />
+            </label>
+        </section>
+        <CreativeImageTool label={label} prompt={prompt} asset={asset} onSaved={onSaved} assetType="pattern" requireReference={mode !== "draft"}
+            onInspect={(url, name) => setInspection({ url, name })} />
+        <PatternCheck incoming={inspection} />
+    </div>;
+}
+
+function ModelStudio({ asset, onSaved }) {
+    const [description, setDescription] = useState("");
+    const [pose, setPose] = useState("正面半身");
+    const prompt = `以参考照片中的成年模特为定妆参考。保持面部身份、肤色、发型与五官比例稳定。本次拍摄：${pose}。${description.trim()}。保持商业摄影的真实肤质和自然动作，输出单张图片。`;
+    return <div className="wfa-creative-stack">
+        <section className="wfa-creative-card" aria-label="模特定妆">
+            <h3>模特定妆</h3>
+            <label>机位与构图
+                <select value={pose} onChange={event => setPose(event.target.value)}>
+                    {["正面半身", "四分之三侧面", "自然站姿全身", "行走全身", "棚拍面部特写"].map(item => <option key={item}>{item}</option>)}
+                </select>
+            </label>
+            <label>服装与拍摄要求
+                <textarea rows={2} value={description} maxLength={1000} onChange={event => setDescription(event.target.value)} />
+            </label>
+        </section>
+        <CreativeImageTool label="生成定妆参考" prompt={prompt} asset={asset} onSaved={onSaved} assetType="model" requireReference />
+    </div>;
+}
+
+export function CreativeCenter({ onSend }) {
+    const [page, setPage] = useState("storyboard");
+    const [reverseOpen, setReverseOpen] = useState(false);
+    const [templates, setTemplates] = usePersistedState("wfa_creative_suite_templates", []);
+    const [assets, setAssets] = usePersistedState("wfa_creative_assets_v1", []);
+    const [assetId, setAssetId] = useState("");
+    const asset = assets.find(item => item.id === assetId);
+    const save = item => setAssets(current => [item, ...current]);
     return <div className="wfa-creative">
         <WorkspaceHeader title="创意中心" />
         <div className="wfa-creative-body">
             <div className="wfa-creative-tabs" role="group" aria-label="创意功能">
-                {[["ecomgen", "完整工作台"], ["storyboard", "套图分镜"], ["pattern", "花型验缝"]].map(([id, title]) =>
+                {[["storyboard", "套图"], ["pattern", "花型"], ["model", "模特"], ["assets", "素材库"]].map(([id, title]) =>
                     <button key={id} type="button" aria-pressed={page === id} onClick={() => setPage(id)}>{title}</button>)}
             </div>
-            <div hidden={page !== "ecomgen"}><EcomGenWorkspace active={active && page === "ecomgen"} /></div>
-            <div hidden={page !== "storyboard"}><Storyboard onSend={onSend} /></div>
-            <div hidden={page !== "pattern"}><PatternCheck /></div>
+            {asset && page !== "assets" && <div className="wfa-creative-reference">
+                <span>当前素材 · {asset.name}</span>
+                <button type="button" onClick={() => setAssetId("")}>清除</button>
+            </div>}
+            <div hidden={page !== "storyboard"}>
+                <div className="wfa-creative-stack">
+                    <div className="wfa-creative-buttons" role="group" aria-label="套图工具">
+                        <button type="button" aria-pressed={!reverseOpen} onClick={() => setReverseOpen(false)}>套图分镜</button>
+                        <button type="button" aria-pressed={reverseOpen} onClick={() => setReverseOpen(true)}>套图反推</button>
+                    </div>
+                    <div hidden={reverseOpen}><Storyboard onSend={onSend} templates={templates} asset={asset} onSaved={save} /></div>
+                    <div hidden={!reverseOpen}><SuiteReverse onSave={suite => {
+                        setTemplates(current => [...current, { ...suite, id: "suite-" + Date.now().toString(36) + "-" + current.length }]);
+                    }} /></div>
+                </div>
+            </div>
+            <div hidden={page !== "pattern"}><PatternStudio asset={asset} onSaved={save} /></div>
+            <div hidden={page !== "model"}><ModelStudio asset={asset} onSaved={save} /></div>
+            <div hidden={page !== "assets"}><CreativeAssetLibrary assets={assets} onSaved={save} onUse={item => {
+                setAssetId(item.id);
+                setPage(item.type === "model" ? "model" : item.type === "pattern" ? "pattern" : "storyboard");
+                setReverseOpen(false);
+            }} /></div>
         </div>
     </div>;
 }

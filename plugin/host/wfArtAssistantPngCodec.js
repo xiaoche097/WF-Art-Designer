@@ -60,6 +60,36 @@ function writePngChunk(typeBytes, payload) {
     return chunk;
 }
 
+export function setPngDpi(bytes, dpi) {
+    if (!PNG_SIGNATURE.every((value, index) => bytes[index] === value)) throw new Error("需要 PNG 图像");
+    if (!Number.isFinite(dpi) || dpi <= 0) throw new Error("无效的 PNG 分辨率");
+    const resolution = new Uint8Array(9);
+    const pixelsPerMetre = Math.round(dpi / 0.0254);
+    writeUint32BE(resolution, 0, pixelsPerMetre);
+    writeUint32BE(resolution, 4, pixelsPerMetre);
+    resolution[8] = 1;
+    const physical = writePngChunk([0x70, 0x48, 0x59, 0x73], resolution);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const chunks = [bytes.subarray(0, PNG_SIGNATURE.length)];
+    let offset = PNG_SIGNATURE.length;
+    while (offset + 12 <= bytes.length) {
+        const end = offset + 12 + view.getUint32(offset);
+        if (end > bytes.length) throw new Error("PNG 图块不完整");
+        const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+        if (type !== "pHYs") chunks.push(bytes.subarray(offset, end));
+        if (type === "IHDR") chunks.push(physical);
+        offset = end;
+    }
+    if (offset !== bytes.length) throw new Error("PNG 尾部不完整");
+    const output = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    let cursor = 0;
+    for (const chunk of chunks) {
+        output.set(chunk, cursor);
+        cursor += chunk.length;
+    }
+    return output;
+}
+
 function storedDeflateStream(rawRows) {
     const blockCount = Math.max(1, Math.ceil(rawRows.length / ZLIB_STORE_BLOCK_LIMIT));
     const out = new Uint8Array(2 + blockCount * 5 + rawRows.length + 4);

@@ -56,6 +56,9 @@ const OLD_BRAND_PATTERNS = [
 const BANANA_FEATURE_FILES = new Set([
     "src/components/ProductModeButton.jsx",
     "src/comfy/ComfyShell.jsx",
+    "src/creative/CreativeImageTool.jsx",
+    "src/creative/creativeWorkflows.js",
+    "src/creative/SuiteReverse.jsx",
     "src/forge/ForgeShell.jsx",
     "src/hooks/usePersistedState.js",
     "src/retouch/ClothFinishing.jsx",

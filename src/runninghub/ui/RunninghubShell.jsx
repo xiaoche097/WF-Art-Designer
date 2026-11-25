@@ -1341,7 +1341,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                 <PsTools />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "creative"}>
-                <CreativeCenter onSend={useLibraryText} active={activeProductMode === "creative"} />
+                <CreativeCenter onSend={useLibraryText} />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />

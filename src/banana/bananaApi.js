@@ -243,3 +243,30 @@ export async function runBananaImage(config, task, imageOrImages) {
     if (!result.length) throw new Error("供应商未返回图片，请确认使用支持图片输出的模型");
     return result;
 }
+
+export async function runBananaVision(config, { model, prompt, images, signal }) {
+    const checked = resolveBananaRunConfig(config);
+    const gemini = checked.protocol === GEMINI_IMAGES;
+    const endpoint = gemini ? `models/${encodeURIComponent(model)}:generateContent` : "chat/completions";
+    const body = gemini ? {
+        contents: [{ role: "user", parts: [
+            { text: prompt },
+            ...images.map(image => ({ inlineData: { mimeType: image.mimeType, data: image.base64 } })),
+        ] }],
+    } : {
+        model,
+        messages: [{ role: "user", content: [
+            { type: "text", text: prompt },
+            ...images.map(image => ({ type: "image_url", image_url: { url: dataImage(image.base64, image.mimeType) } })),
+        ] }],
+    };
+    const response = await bananaNetwork(() => hostFetch(`${checked.baseUrl}/${endpoint}`, {
+        method: "POST", headers: headers(checked), body: JSON.stringify(body), timeoutMs: 90000, signal,
+    }), signal);
+    const data = responseJson(response, checked.apiKey);
+    const content = gemini
+        ? data.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || "").join("")
+        : data.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) throw new Error("视觉模型没有返回分析文字");
+    return content;
+}

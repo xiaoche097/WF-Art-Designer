@@ -6,7 +6,7 @@
 
 .wfa-creative-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
 }
 
@@ -60,22 +60,28 @@
 }
 .wfa-creative button:disabled { opacity: .58; cursor: default; }
 
-.wfa-ecomgen-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+.wfa-creative-buttons, .wfa-creative-reference {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-
-.wfa-ecomgen-heading small { flex-shrink: 0; }
-.wfa-ecomgen-primary-row, .wfa-ecomgen-grid { display: grid; gap: 6px; }
-.wfa-ecomgen-primary-row { grid-template-columns: minmax(0, 1fr) minmax(62px, auto); }
-.wfa-ecomgen-grid {
-    margin-block-start: 6px;
-    grid-template-columns: repeat(auto-fit, minmax(min(104px, 100%), 1fr));
+.wfa-creative-reference { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.wfa-creative-reference button { padding-inline: 8px; }
+.wfa-creative-reference span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wfa-creative-reference img { inline-size: 64px; block-size: 64px; object-fit: contain; }
+.wfa-creative-result { display: block; inline-size: 100%; max-block-size: 340px; object-fit: contain; border-radius: 6px; }
+.wfa-creative-thumbnails {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    list-style: none;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
 }
-.wfa-ecomgen-message { padding-inline: 2px; overflow-wrap: anywhere; }
-.wfa-creative .wfa-ecomgen-message[role="alert"] { color: var(--wf-danger, #ffb4ad); }
+.wfa-creative-thumbnails li { display: grid; gap: 2px; text-align: center; color: var(--wf-muted); }
+.wfa-creative-thumbnails img { inline-size: 100%; aspect-ratio: 1; object-fit: contain; background: var(--wf-field); }
+.wfa-creative-outline { margin-block: 0; padding-inline-start: 22px; }
+.wfa-creative [role="alert"] { color: var(--wf-danger, #ffb4ad); overflow-wrap: anywhere; }
 
 .wfa-creative-shots {
     display: grid;

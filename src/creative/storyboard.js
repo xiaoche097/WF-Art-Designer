@@ -14,7 +14,7 @@ const roles = {
     closing: ["详情页收尾", "让商品与版式自然收束", "以稳定的主体构图和干净留白结束整套详情图。可为后期文案留位，不生成价格、折扣、库存、包邮或未经核实的承诺。"],
 };
 
-export function buildStoryboard({ suiteId, product, facts, market, language, artDirection }) {
+export function buildStoryboard({ suiteId, product, facts, market, language, artDirection }, template) {
     const suite = creativeSuites.find(item => item.id === suiteId) || creativeSuites[0];
     const productName = String(product || "").trim();
     if (!productName) return [];
@@ -23,9 +23,13 @@ export function buildStoryboard({ suiteId, product, facts, market, language, art
         facts?.trim() ? `只可依据这些已知事实：${facts.trim()}` : "只表现商品参考图可核实的特征。",
         market?.trim() ? `目标渠道与市场：${market.trim()}` : "",
         `文案语种：${language || "简体中文"}。仅在该分镜需要文案且事实已有依据时添加，保持短句清晰。`,
-        `全套视觉：${artDirection?.trim() || "干净的商业摄影，统一色温、光源方向和留白节奏。"}`,
-        "以织影里捕获的商品图为实物参考，保持商品的版型、比例、颜色、纹理、标识和包装文字。不得新增参考中不存在的配件、认证、数据或卖点。",
+        `全套视觉：${artDirection?.trim() || template?.style || "干净的商业摄影，统一色温、光源方向和留白节奏。"}`,
+        "以随本次请求提供的商品图为实物参考，保持商品的版型、比例、颜色、纹理、标识和包装文字。不得新增参考中不存在的配件、认证、数据或卖点。",
     ].filter(Boolean);
+    if (template) return template.shots.map(shot => ({
+        id: shot.id, title: shot.title, detail: "参考套图",
+        prompt: [...lines, `本张画面：${shot.prompt}`, "只输出这一张分镜画面。"].join("\n"),
+    }));
     return suite.shots.map(id => {
         const [title, detail, composition] = roles[id];
         return { id, title, detail, prompt: [...lines, `本张画面：${title}。 ${composition}`, "只输出这一张分镜画面。"].join("\n") };

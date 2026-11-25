@@ -425,7 +425,7 @@ function requestImageBytesViaXHR(url, timeoutMs = 60000) {
     });
 }
 
-async function loadResultImageBytes(imageUrl) {
+export async function loadResultImageBytes(imageUrl) {
     const urlText = String(imageUrl || "");
     if (urlText.startsWith("data:")) return readDataUrlImage(urlText);
     const cleanPath = urlText.split("?")[0];

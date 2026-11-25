@@ -27,14 +27,14 @@ export function readRecolorSample(sample) {
     return { image: { data, width, height }, weight };
 }
 
-export function referenceFromFile(file) {
+export function referenceFromFile(file, maxEdge = MAX_EDGE) {
     if (file.size > 20 * 1024 * 1024) throw new Error("图片超过 20 MB");
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file);
         const image = new Image();
         image.onload = () => {
             try {
-                const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+                const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
                 const canvas = document.createElement("canvas");
                 canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
                 canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));

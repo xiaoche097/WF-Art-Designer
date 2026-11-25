@@ -38,3 +38,29 @@ test("tile checks distinguish smooth seams, periodic stripes, and axis-specific 
     assert.equal(analyzeTileSeams(transparent).noticeable, false);
     assert.throws(() => analyzeTileSeams(pixels(() => [0, 0, 0, 255], 1)), /3 × 3/);
 });
+import { parseReverseSuite } from "./creativeWorkflows.js";
+import { encodePNGFromRGBA, setPngDpi } from "../../plugin/host/wfArtAssistantPngCodec.js";
+
+test("reverse suite validates shot count and produces a reusable storyboard", () => {
+    const data = { name: "棚拍参考", style: "暖白棚拍", shots: [{ title: "主图", prompt: "白底正面视角" }] };
+    const suite = parseReverseSuite(JSON.stringify(data), 1);
+    const [shot] = buildStoryboard({ product: "棉质 T 恤" }, suite);
+    assert.equal(shot.title, "主图");
+    assert.match(shot.prompt, /暖白棚拍/);
+    assert.match(shot.prompt, /白底正面视角/);
+    assert.throws(() => parseReverseSuite(JSON.stringify(data), 2), /数量/);
+    assert.throws(() => parseReverseSuite("not JSON", 1), /JSON/);
+});
+
+test("print PNG encodes 300 DPI as pHYs and preserves the original image chunks", () => {
+    const original = encodePNGFromRGBA(1, 1, new Uint8Array([20, 60, 100, 255]));
+    const marked = setPngDpi(original, 300);
+    const twice = setPngDpi(marked, 300);
+    const buffer = Buffer.from(marked);
+    const type = buffer.indexOf("pHYs");
+    assert.equal(buffer.readUInt32BE(type + 4), 11811);
+    assert.equal(buffer.readUInt32BE(type + 8), 11811);
+    assert.equal(buffer[type + 12], 1);
+    assert.deepEqual(twice, marked);
+    assert.deepEqual(buffer.subarray(buffer.indexOf("IDAT")), Buffer.from(original).subarray(Buffer.from(original).indexOf("IDAT")));
+});
