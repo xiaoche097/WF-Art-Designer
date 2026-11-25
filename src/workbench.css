@@ -74,7 +74,7 @@
     flex: none;
     margin: 8px auto 0;
     display: grid;
-    grid-template-columns: 1.16fr .8fr 1.16fr 1.12fr .8fr;
+    grid-template-columns: 1.16fr .7fr 1.16fr 1.16fr 1.16fr .7fr;
     gap: 3px;
     padding: 3px;
     align-items: stretch;
@@ -88,7 +88,7 @@
     padding-inline: 3px;
     border-radius: 5px;
     color: var(--wf-muted);
-    font: 600 clamp(10px, 3.6vw, 13px) / 1.15 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    font: 600 clamp(10px, 3.42vw, 13px) / 1.15 "Segoe UI", "Microsoft YaHei UI", sans-serif;
     transition: color var(--wf-motion), background-color var(--wf-motion);
 }
 
@@ -331,6 +331,18 @@
 @media (max-width: 278px) {
     .rh-shell-container:is(.rh-theme-dark, .rh-theme-light) .wfa-product-mode-item {
         padding-inline: 1px;
+    }
+}
+
+@media (max-width: 265px) {
+    .rh-shell-container { scroll-padding-block-start: 90px; }
+    .rh-shell-container:is(.rh-theme-dark, .rh-theme-light) > .wfa-product-mode-panel {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .wfa-product-group:nth-child(3) .wfa-product-group-list {
+        inset-inline-start: auto;
+        inset-inline-end: 0;
+        transform: none;
     }
 }
 

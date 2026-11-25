@@ -8,6 +8,7 @@ import { ComfyShell } from "../../comfy/ComfyShell.jsx";
 import { RetouchShell } from "../../retouch/RetouchShell.jsx";
 import { PromptLibrary } from "../../prompt-library/PromptLibrary.jsx";
 import { PsTools } from "../../ps-tools/PsTools.jsx";
+import { CreativeCenter } from "../../creative/CreativeCenter.jsx";
 import { BananaShell } from "../../banana/BananaShell.jsx";
 
 function hexToRgb(hex) {
@@ -1338,6 +1339,9 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "ps-tools"}>
                 <PsTools />
+            </div>
+            <div className="wfa-workspace" hidden={activeProductMode !== "creative"}>
+                <CreativeCenter onSend={useLibraryText} />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />
