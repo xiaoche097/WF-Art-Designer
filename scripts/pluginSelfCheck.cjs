@@ -58,6 +58,7 @@ const BANANA_FEATURE_FILES = new Set([
     "src/comfy/ComfyShell.jsx",
     "src/creative/CreativeImageTool.jsx",
     "src/creative/creativeWorkflows.js",
+    "src/creative/PatternListing.jsx",
     "src/creative/SuiteReverse.jsx",
     "src/forge/ForgeShell.jsx",
     "src/hooks/usePersistedState.js",

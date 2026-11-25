@@ -5,6 +5,7 @@ import { runAiAppAndWaitInHost } from "./runninghubAiAppRunnerHost.js";
 import retouchHost from "./retouch/retouchHost.js";
 import clothHost from "./retouch/clothHost.js";
 import { runPsScript } from "./psScripts.js";
+import { createCreativeZip, encodeCreativeZipText, maxCreativeZipBytes } from "./creativeZip.js";
 import { pluginInstallerUrl } from "../../src/utils/pluginReleases.js";
 import { decodeDuckImageBytes } from "./duckLocalDecoder.js";
 import { Jimp, JimpMime } from "jimp";
@@ -2415,6 +2416,41 @@ export function setupBridge(webviewEl) {
 
                     sendToWebview({ type: "network.downloadProgress", requestId: id, loaded: bytes.length, total: bytes.length, percent: 100, phase: "done" });
                     result = { ok: true, fileName, byteLength: bytes.length, ext, duckDecode };
+                    break;
+                }
+                case "creative.exportSuite": {
+                    const [folderToken, request] = args;
+                    const shots = request?.shots;
+                    if (!Array.isArray(shots) || shots.length < 1 || shots.length > 24) throw new Error("请选择 1 至 24 张已通过的成片");
+                    const source = await (await fs.getDataFolder()).getEntry("creative_assets");
+                    const destination = await resolveFolder(folderToken);
+                    const files = [];
+                    const manifestShots = [];
+                    let size = 0;
+                    for (const [index, shot] of shots.entries()) {
+                        const name = String(shot.fileName || "");
+                        if (!/^[^\\/:*?"<>|\x00-\x1f]+\.(png|jpe?g|webp)$/i.test(name)) throw new Error("成片文件名无效");
+                        const file = await source.getEntry(name);
+                        if (!file.isFile) throw new Error("成片已不存在");
+                        const bytes = new Uint8Array(await file.read({ format: formats.binary }));
+                        if (!bytes.length) throw new Error("成片文件为空");
+                        size += bytes.length;
+                        if (size >= maxCreativeZipBytes) throw new Error("套图 ZIP 超过 96 MB");
+                        const path = `images/${String(index + 1).padStart(2, "0")}.${name.split(".").pop().toLowerCase()}`;
+                        files.push({ name: path, bytes });
+                        manifestShots.push({ id: shot.id, title: shot.title, prompt: shot.prompt, approvedAt: shot.approvedAt, path });
+                    }
+                    const manifest = { version: 1, project: request.project, shots: manifestShots };
+                    files.push({ name: "manifest.json", bytes: encodeCreativeZipText(JSON.stringify(manifest, null, 2)) });
+                    const zip = createCreativeZip(files);
+                    const fileName = `WF-套图-${Date.now()}.zip`;
+                    const file = await destination.createFile(fileName, { overwrite: false });
+                    try { await file.write(zip, { format: formats.binary }); }
+                    catch (error) {
+                        await file.delete().catch(failure => console.warn("套图导出失败后的清理未完成", failure));
+                        throw error;
+                    }
+                    result = { fileName, count: manifestShots.length };
                     break;
                 }
                 case "network.fetchStream": {

@@ -11,18 +11,20 @@ import { analyzeTileSeams } from "./tileSeams.js";
 import { CreativeImageTool } from "./CreativeImageTool.jsx";
 import { SuiteReverse } from "./SuiteReverse.jsx";
 import { CreativeAssetLibrary } from "./CreativeAssetLibrary.jsx";
+import { SuiteDelivery } from "./SuiteDelivery.jsx";
+import { PatternColorTool } from "./PatternColorTool.jsx";
+import { PatternListing } from "./PatternListing.jsx";
 import "./CreativeCenter.css";
 
-const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "" };
+const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "", approved: {}, referenceId: "" };
 
-function Storyboard({ onSend, templates, asset, onSaved }) {
-    const [stored, setStored] = usePersistedState("wfa_creative_storyboard_v1", initialProject);
-    const project = { ...initialProject, ...stored };
+function Storyboard({ project, onUpdate, onSend, templates, assets, onSaved }) {
     const shots = buildStoryboard(project, templates.find(template => template.id === project.suiteId));
     const selected = shots.find(shot => shot.id === project.activeShot) || shots[0];
     const shotKey = selected && `${project.suiteId}:${selected.id}`;
     const draft = project.edits?.[shotKey] ?? selected?.prompt ?? "";
-    const update = (key, value) => setStored(current => ({ ...initialProject, ...current, [key]: value }));
+    const update = (key, value) => onUpdate(current => ({ ...current, [key]: value }));
+    const asset = assets.find(item => item.id === project.referenceId);
 
     const fields = [
         ["market", "渠道与市场", "例如：Amazon 美国站", 120],
@@ -46,6 +48,12 @@ function Storyboard({ onSend, templates, asset, onSaved }) {
                     placeholder="填写实物已确认的材质、版型或尺寸"
                     onChange={event => update("facts", event.target.value)} />
             </label>
+            <label>项目参考图
+                <select value={asset?.id || ""} onChange={event => update("referenceId", event.target.value)}>
+                    <option value="">在分镜中单独导入</option>
+                    {assets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+            </label>
             <details>
                 <summary>渠道与画面设置</summary>
                 {fields.map(([key, label, placeholder, limit]) => <label key={key}>{label}
@@ -65,7 +73,7 @@ function Storyboard({ onSend, templates, asset, onSaved }) {
                 <ul className="wfa-creative-shots" aria-label="分镜列表">
                     {shots.map(shot => <li key={shot.id}>
                         <button type="button" aria-pressed={selected.id === shot.id} onClick={() => update("activeShot", shot.id)}>
-                            <span>{shot.title}</span><small>{shot.detail}</small>
+                            <span>{shot.title}</span><small>{project.approved?.[`${project.suiteId}:${shot.id}`] ? "已通过审核" : shot.detail}</small>
                         </button>
                     </li>)}
                 </ul>
@@ -85,11 +93,13 @@ function Storyboard({ onSend, templates, asset, onSaved }) {
             </>}
         </section>
         {selected && <CreativeImageTool key={shotKey} label={selected.title} prompt={draft} asset={asset}
-            onSaved={onSaved} assetType="suite" requireReference />}
+            onSaved={onSaved} onApprove={image => onUpdate(current => ({
+                ...current, approved: { ...current.approved, [shotKey]: image },
+            }))} assetType="suite" requireReference />}
     </div>;
 }
 
-function PatternCheck({ incoming }) {
+function PatternCheck({ incoming, model, setModel }) {
     const [result, setResult] = useState(null);
     const [status, setStatus] = useState("");
     const [showGuides, setShowGuides] = useState(true);
@@ -213,6 +223,7 @@ function PatternCheck({ incoming }) {
                 </div>
                 <button type="button" disabled={exporting} onClick={exportPattern}>{exporting ? "正在导出…" : "导出 300 DPI 平铺 PNG"}</button>
             </details>
+            <PatternListing key={sequence.current} file={result.file} model={model} setModel={setModel} />
         </>}
     </section>;
 }
@@ -224,13 +235,20 @@ const patternTasks = {
     variant: ["衍生新款", "基于参考图的主题和风格创作可平铺的新款，输出正方形平面图稿，无产品样机、文字、水印或边框。"],
 };
 
-function PatternStudio({ asset, onSaved }) {
+function PatternStudio({ asset, onSaved, model, setModel }) {
+    const [tool, setTool] = useState("ai");
     const [mode, setMode] = useState("extract");
     const [notes, setNotes] = useState("");
     const [inspection, setInspection] = useState(null);
     const [label, instruction] = patternTasks[mode];
     const prompt = mode === "draft" && !notes.trim() ? "" : [instruction, notes.trim()].filter(Boolean).join("\n");
+    const inspect = (url, name) => { setInspection({ url, name }); setTool("proof"); };
     return <div className="wfa-creative-stack">
+        <div className="wfa-creative-buttons wfa-creative-suite-tools" role="group" aria-label="花型工具">
+            {[["ai", "AI 花型"], ["color", "本地改色"], ["proof", "验缝与规格"]].map(([id, title]) =>
+                <button key={id} type="button" aria-pressed={tool === id} onClick={() => setTool(id)}>{title}</button>)}
+        </div>
+        <div hidden={tool !== "ai"}><div className="wfa-creative-stack">
         <section className="wfa-creative-card" aria-label="花型工坊">
             <h3>花型工坊</h3>
             <label>操作
@@ -243,8 +261,10 @@ function PatternStudio({ asset, onSaved }) {
             </label>
         </section>
         <CreativeImageTool label={label} prompt={prompt} asset={asset} onSaved={onSaved} assetType="pattern" requireReference={mode !== "draft"}
-            onInspect={(url, name) => setInspection({ url, name })} />
-        <PatternCheck incoming={inspection} />
+            onInspect={inspect} />
+        </div></div>
+        <div hidden={tool !== "color"}><PatternColorTool onInspect={inspect} /></div>
+        <div hidden={tool !== "proof"}><PatternCheck incoming={inspection} model={model} setModel={setModel} /></div>
     </div>;
 }
 
@@ -270,9 +290,23 @@ function ModelStudio({ asset, onSaved }) {
 
 export function CreativeCenter({ onSend }) {
     const [page, setPage] = useState("storyboard");
-    const [reverseOpen, setReverseOpen] = useState(false);
+    const [suiteTool, setSuiteTool] = useState("shots");
     const [templates, setTemplates] = usePersistedState("wfa_creative_suite_templates", []);
     const [assets, setAssets] = usePersistedState("wfa_creative_assets_v1", []);
+    const [visionModel, setVisionModel] = usePersistedState("wfa_creative_vision_model", "");
+    const [legacy] = usePersistedState("wfa_creative_storyboard_v1", initialProject);
+    const [projects, setProjects] = usePersistedState("wfa_creative_projects_v1", () => [
+        { ...initialProject, ...legacy, id: "first", name: legacy?.product?.trim() || "项目 1" },
+    ]);
+    const [projectId, setProjectId] = usePersistedState("wfa_creative_project_id", "first");
+    const project = projects.find(item => item.id === projectId) || projects[0];
+    const updateProject = change => setProjects(current => current.map(item => item.id === project.id ? change(item) : item));
+    const addProject = () => {
+        const id = `project-${Date.now().toString(36)}-${projects.length}`;
+        setProjects(current => [...current, { ...initialProject, id, name: `项目 ${current.length + 1}` }]);
+        setProjectId(id);
+        setSuiteTool("shots");
+    };
     const [assetId, setAssetId] = useState("");
     const asset = assets.find(item => item.id === assetId);
     const save = item => setAssets(current => [item, ...current]);
@@ -283,28 +317,50 @@ export function CreativeCenter({ onSend }) {
                 {[["storyboard", "套图"], ["pattern", "花型"], ["model", "模特"], ["assets", "素材库"]].map(([id, title]) =>
                     <button key={id} type="button" aria-pressed={page === id} onClick={() => setPage(id)}>{title}</button>)}
             </div>
-            {asset && page !== "assets" && <div className="wfa-creative-reference">
+            {asset && (page === "pattern" || page === "model") && <div className="wfa-creative-reference">
                 <span>当前素材 · {asset.name}</span>
                 <button type="button" onClick={() => setAssetId("")}>清除</button>
             </div>}
             <div hidden={page !== "storyboard"}>
                 <div className="wfa-creative-stack">
-                    <div className="wfa-creative-buttons" role="group" aria-label="套图工具">
-                        <button type="button" aria-pressed={!reverseOpen} onClick={() => setReverseOpen(false)}>套图分镜</button>
-                        <button type="button" aria-pressed={reverseOpen} onClick={() => setReverseOpen(true)}>套图反推</button>
+                    <section className="wfa-creative-card" aria-label="当前套图项目">
+                        <h3>套图项目</h3>
+                        <div className="wfa-creative-reference">
+                            <select aria-label="切换套图项目" value={project.id} onChange={event => setProjectId(event.target.value)}>
+                                {projects.map(item => <option key={item.id} value={item.id}>{item.name || item.product || "未命名项目"}</option>)}
+                            </select>
+                            <button type="button" onClick={addProject}>新建</button>
+                        </div>
+                        <label>项目名称<input value={project.name} maxLength={80} onChange={event => {
+                            const name = event.target.value;
+                            updateProject(current => ({ ...current, name }));
+                        }} /></label>
+                    </section>
+                    <div className="wfa-creative-buttons wfa-creative-suite-tools" role="group" aria-label="套图工具">
+                        {[["shots", "套图分镜"], ["reverse", "套图反推"], ["delivery", "审核导出"]].map(([id, title]) =>
+                            <button key={id} type="button" aria-pressed={suiteTool === id} onClick={() => setSuiteTool(id)}>{title}</button>)}
                     </div>
-                    <div hidden={reverseOpen}><Storyboard onSend={onSend} templates={templates} asset={asset} onSaved={save} /></div>
-                    <div hidden={!reverseOpen}><SuiteReverse onSave={suite => {
+                    <div hidden={suiteTool !== "shots"}><Storyboard key={project.id} project={project} onUpdate={updateProject}
+                        onSend={onSend} templates={templates} assets={assets} onSaved={save} /></div>
+                    <div hidden={suiteTool !== "reverse"}><SuiteReverse model={visionModel} setModel={setVisionModel} onSave={suite => {
                         setTemplates(current => [...current, { ...suite, id: "suite-" + Date.now().toString(36) + "-" + current.length }]);
                     }} /></div>
+                    {suiteTool === "delivery" && <SuiteDelivery key={project.id} project={project} templates={templates} onReject={key => updateProject(current => {
+                        const approved = { ...current.approved };
+                        delete approved[key];
+                        return { ...current, approved };
+                    })} />}
                 </div>
             </div>
-            <div hidden={page !== "pattern"}><PatternStudio asset={asset} onSaved={save} /></div>
+            <div hidden={page !== "pattern"}><PatternStudio asset={asset} onSaved={save} model={visionModel} setModel={setVisionModel} /></div>
             <div hidden={page !== "model"}><ModelStudio asset={asset} onSaved={save} /></div>
             <div hidden={page !== "assets"}><CreativeAssetLibrary assets={assets} onSaved={save} onUse={item => {
                 setAssetId(item.id);
                 setPage(item.type === "model" ? "model" : item.type === "pattern" ? "pattern" : "storyboard");
-                setReverseOpen(false);
+                if (item.type === "product" || item.type === "suite") {
+                    updateProject(current => ({ ...current, referenceId: item.id }));
+                    setSuiteTool("shots");
+                }
             }} /></div>
         </div>
     </div>;

@@ -15,12 +15,13 @@ export async function placeCreativeResult(url) {
     await performAutoPlace([file.fileName], "创意中心", null, folder.token, doc.id, { force: true, group: false });
 }
 
-export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, onInspect, requireReference = false }) {
+export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, onInspect, onApprove, requireReference = false }) {
     const inPhotoshop = isInWebView();
     const [reference, setReference] = useState(null);
     const [outputs, setOutputs] = useState([]);
     const [output, setOutput] = useState("");
     const [resultLabel, setResultLabel] = useState("");
+    const [resultPrompt, setResultPrompt] = useState("");
     const [busy, setBusy] = useState("");
     const [status, setStatus] = useState("");
     const [error, setError] = useState("");
@@ -55,6 +56,7 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
                 setOutputs(next);
                 setOutput(next[0]);
                 setResultLabel(label);
+                setResultPrompt(task.prompt);
             } catch (failure) {
                 if (!request.signal.aborted) throw failure;
             } finally {
@@ -64,12 +66,13 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
         });
     }
 
-    function save(url, type, name) {
-        return run("正在保存素材…", async () => {
+    function save(url, type, name, approve = false) {
+        return run(approve ? "正在保存审核成片…" : "正在保存素材…", async () => {
             const folder = await creativeAssetFolder();
             const saved = await saveImageWithBounds(folder, url, 1, { runningHubAppName: "创意中心" });
             onSaved({ id: saved.fileName, fileName: saved.fileName, type, name });
-            setStatus("已保存到创意中心素材库。");
+            if (approve) onApprove({ fileName: saved.fileName, prompt: resultPrompt, approvedAt: new Date().toISOString() });
+            setStatus(approve ? "成片已通过审核。" : "已保存到创意中心素材库。");
         });
     }
 
@@ -113,6 +116,8 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
             </select></label>}
             <img className="wfa-creative-result" src={output} alt={resultLabel + "成片预览"} />
             {onInspect && <button type="button" disabled={Boolean(busy)} onClick={() => onInspect(output, resultLabel)}>检查成片接缝</button>}
+            {onApprove && inPhotoshop && <button type="button" className="wfa-creative-primary" disabled={Boolean(busy)}
+                onClick={() => save(output, assetType, resultLabel, true)}>通过审核</button>}
             {inPhotoshop && <div className="wfa-creative-buttons">
                 <button type="button" disabled={Boolean(busy)} onClick={() => save(output, assetType, resultLabel)}>存入素材库</button>
                 <button type="button" disabled={Boolean(busy)} onClick={() => run("正在置入图层…", async () => {

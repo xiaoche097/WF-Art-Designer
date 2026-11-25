@@ -28,7 +28,7 @@ function crcTable() {
     return table;
 }
 
-function crc32Range(bytes, offset, length) {
+export function crc32Range(bytes, offset, length) {
     const table = crcTable();
     let crc = 0xffffffff;
     const end = offset + length;

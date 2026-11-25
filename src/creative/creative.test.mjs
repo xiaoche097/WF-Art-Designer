@@ -40,6 +40,8 @@ test("tile checks distinguish smooth seams, periodic stripes, and axis-specific 
 });
 import { parseReverseSuite } from "./creativeWorkflows.js";
 import { encodePNGFromRGBA, setPngDpi } from "../../plugin/host/wfArtAssistantPngCodec.js";
+import { recolorPattern } from "./patternRecolor.js";
+import { createCreativeZip, encodeCreativeZipText } from "../../plugin/host/creativeZip.js";
 
 test("reverse suite validates shot count and produces a reusable storyboard", () => {
     const data = { name: "棚拍参考", style: "暖白棚拍", shots: [{ title: "主图", prompt: "白底正面视角" }] };
@@ -63,4 +65,20 @@ test("print PNG encodes 300 DPI as pHYs and preserves the original image chunks"
     assert.equal(buffer[type + 12], 1);
     assert.deepEqual(twice, marked);
     assert.deepEqual(buffer.subarray(buffer.indexOf("IDAT")), Buffer.from(original).subarray(Buffer.from(original).indexOf("IDAT")));
+});
+
+test("pattern recolor preserves alpha, unrelated colors and the original pixel buffer", () => {
+    const frame = { width: 3, height: 1, data: new Uint8ClampedArray([20, 30, 40, 180, 200, 30, 40, 255, 20, 30, 40, 0]) };
+    const result = recolorPattern(frame, [20, 30, 40], [40, 100, 160], 30);
+    assert.deepEqual([...result.data], [40, 100, 160, 180, 200, 30, 40, 255, 20, 30, 40, 0]);
+    assert.equal(frame.data[0], 20);
+});
+
+test("suite ZIP records UTF-8 names, CRC and local offsets", () => {
+    const zip = Buffer.from(createCreativeZip([{ name: "套图.txt", bytes: encodeCreativeZipText("123456789") }]));
+    const central = zip.readUInt32LE(zip.length - 6);
+    assert.equal(zip.readUInt32LE(14), 0xcbf43926);
+    assert.equal(zip.readUInt32LE(central), 0x02014b50);
+    assert.equal(zip.readUInt32LE(central + 42), 0);
+    assert.equal(zip.subarray(30, 30 + zip.readUInt16LE(26)).toString(), "套图.txt");
 });

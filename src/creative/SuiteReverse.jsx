@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { runBananaVision } from "../banana/bananaApi.js";
-import { usePersistedState } from "../hooks/usePersistedState.js";
 import { parseReverseSuite, prepareCreativeImage, readCreativeProfile, reversePrompt } from "./creativeWorkflows.js";
 
 const MAX_REFERENCES = 8;
 
-export function SuiteReverse({ onSave }) {
-    const [model, setModel] = usePersistedState("wfa_creative_vision_model", "");
+export function SuiteReverse({ onSave, model, setModel }) {
     const [images, setImages] = useState([]);
     const [suite, setSuite] = useState(null);
     const [progress, setProgress] = useState("");
