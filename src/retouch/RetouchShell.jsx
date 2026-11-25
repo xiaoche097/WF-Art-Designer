@@ -83,7 +83,32 @@ function BatchRecolor({ connected }) {
     const lock = useRef(false);
     const nextId = useRef(0);
     const current = references.find(ref => ref.id === selected);
+    const currentStats = current?.stats;
+    const currentMode = current?.mode;
+    const currentStrength = current?.strength;
+    const comparison = preview?.source === source && preview?.stats === currentStats &&
+        preview?.mode === currentMode && preview?.strength === currentStrength ? preview : null;
     const ready = references.filter(ref => ref.enabled && ref.stats && ref.name.trim());
+
+    useEffect(() => {
+        if (!source || !currentStats) {
+            setPreview(null);
+            return;
+        }
+        const timer = setTimeout(() => {
+            const identity = { source, stats: currentStats, mode: currentMode, strength: currentStrength };
+            try {
+                const { transform } = recolor.buildPipelineMode({ src: source.stats, ref: currentStats }, {
+                    matchMode: currentMode, colorStrength: currentStrength / 100,
+                });
+                setPreview({ ...identity, image: overlayPreview(source.image,
+                    recolor.renderToImageData(source.image, source.weight, transform)) });
+            } catch (error) {
+                setPreview({ ...identity, error: error.message || String(error) });
+            }
+        }, 80);
+        return () => clearTimeout(timer);
+    }, [source, currentStats, currentMode, currentStrength]);
 
     function notify(text, error = false) { setNotice({ text, error }); }
 
@@ -110,7 +135,6 @@ function BatchRecolor({ connected }) {
 
     function updateReference(id, changes) {
         setReferences(items => items.map(ref => ref.id === id ? { ...ref, ...changes } : ref));
-        setPreview(null);
     }
 
     function scanDocument() {
@@ -183,21 +207,12 @@ function BatchRecolor({ connected }) {
                 }
             }
             setReferences(analyzed.map(ref => ref.stats ? { ...ref, failed: false } : ref));
-            notify(count ? `已分析 ${count} 张参考图。可逐个预览或写入 Photoshop。` : "参考图分析失败，请查看各 SKU 的提示。", !count);
+            notify(count ? `已分析 ${count} 张参考图。` : "参考图分析失败，请查看各 SKU 的提示。", !count);
         });
     }
 
     function settings(ref) {
         return { matchMode: ref.mode, colorStrength: ref.strength / 100 };
-    }
-
-    function previewCurrent() {
-        run("正在生成预览…", async () => {
-            await new Promise(resolve => setTimeout(resolve, 0));
-            const { transform } = recolor.buildPipelineMode({ src: source.stats, ref: current.stats }, settings(current));
-            setPreview(overlayPreview(source.image, recolor.renderToImageData(source.image, source.weight, transform)));
-            notify(`已生成 ${current.name} 的调色预览。`);
-        });
     }
 
     function apply() {
@@ -240,14 +255,14 @@ function BatchRecolor({ connected }) {
                         {references.map(ref => <li key={ref.id}>
                             <input type="checkbox" aria-label={`加入批次：${ref.name}`} checked={ref.enabled} disabled={busy}
                                 onChange={event => updateReference(ref.id, { enabled: event.target.checked })} />
-                            <button type="button" disabled={busy} aria-pressed={ref.id === selected} onClick={() => { setSelected(ref.id); setPreview(null); }}>
+                            <button type="button" disabled={busy} aria-pressed={ref.id === selected} onClick={() => setSelected(ref.id)}>
                                 <span>{ref.name || "未命名 SKU"}</span>
                                 {ref.message && <small data-error={ref.failed || undefined}>{ref.message}</small>}
                             </button>
                             <button type="button" aria-label={`移除 ${ref.name}`} disabled={busy} onClick={() => {
                                 const remaining = references.filter(item => item.id !== ref.id);
                                 setReferences(remaining);
-                                if (ref.id === selected) { setSelected(remaining[0]?.id ?? null); setPreview(null); }
+                                if (ref.id === selected) setSelected(remaining[0]?.id ?? null);
                             }}>×</button>
                         </li>)}
                     </ul>
@@ -266,19 +281,24 @@ function BatchRecolor({ connected }) {
                             </label>
                         </div>
                         <p className="wfa-retouch-hint">自动取色有偏差时，可在参考图上拖框选中服装区域。</p>
-                        <div className="wfa-retouch-images">
+                        <div className="wfa-retouch-images" role="group" aria-label={`${current.name || "当前 SKU"} 图像对比`}>
                             <figure>
+                                <figcaption>SKU 参考图</figcaption>
                                 <ReferencePreview key={current.id} reference={current} disabled={busy}
                                     onRegion={region => updateReference(current.id, { region, stats: null, message: "", failed: false })} />
-                                <figcaption>参考图</figcaption>
                             </figure>
-                            {preview && <figure><CanvasImage image={preview} label="调色预览" /><figcaption>调色预览</figcaption></figure>}
+                            <figure>
+                                <figcaption>调色效果</figcaption>
+                                {comparison?.image ? <CanvasImage image={comparison.image} label="调色效果" /> :
+                                    <p className="wfa-retouch-hint" role="status" data-error={Boolean(comparison?.error) || undefined}>
+                                        {comparison?.error || (source && currentStats ? "正在生成预览…" : "分析当前 SKU 后显示")}
+                                    </p>}
+                            </figure>
                         </div>
                         {current.region && <button type="button" disabled={busy} onClick={() => updateReference(current.id, { region: null, stats: null, message: "", failed: false })}>恢复自动取色</button>}
                     </>}
                     <div className="wfa-retouch-actions">
                         <button type="button" disabled={busy || !source || !references.some(ref => ref.enabled && !ref.stats)} onClick={analyze}>分析参考图</button>
-                        <button type="button" disabled={busy || !source || !current?.stats} onClick={previewCurrent}>预览当前 SKU</button>
                         <button className="wfa-retouch-primary" type="button" disabled={busy || !source || !ready.length ||
                             references.some(ref => ref.enabled && (!ref.stats || !ref.name.trim()))} onClick={apply}>
                             写入 Photoshop（{ready.length}）

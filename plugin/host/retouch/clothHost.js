@@ -292,7 +292,7 @@ function getPreview({ id, mask, regions, fromPhotoshop, settings, scope }) {
     const previewMask = scope ? protectedMask(source, mask, scope)
         : mask == null && fromPhotoshop ? null : decodeMask(mask, source.preview.w * source.preview.h);
     const { frame, mask: detailedMask } = detailedPreview(source, previewMask);
-    const regionMap = regions == null ? null : decodeMask(regions, source.preview.w * source.preview.h);
+    const regionMap = scope ? source.scope.labels : regions == null ? null : decodeMask(regions, source.preview.w * source.preview.h);
     const labels = regionMap && resizeMask(regionMap, source.preview.w, source.preview.h, frame.w, frame.h);
     return { width: frame.w, height: frame.h, originalWidth: source.width, originalHeight: source.height,
         rgba: toBase64(frame.bytes), mask: toBase64(detailedMask), regions: labels ? toBase64(labels) : null,

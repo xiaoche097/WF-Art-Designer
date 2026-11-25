@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { test } = require("node:test");
-const { composite, constrainMask, insideGarment } = require("../plugin/host/retouch/clothComposite");
+const { composite, constrainMask, insideGarment, insetConfidenceMask, resizeMask } = require("../plugin/host/retouch/clothComposite");
 
 test("garment and shoe scope erodes boundaries and never accepts skin, accessories or background", () => {
     const width = 9, height = 5;
@@ -17,6 +17,30 @@ test("garment and shoe scope erodes boundaries and never accepts skin, accessori
         if (regions[p] !== 1) assert.equal(clothing[p], 0);
         if (regions[p] !== 4) assert.equal(shoes[p], 0);
     }
+});
+
+test("model boundaries and ambiguous pixels remain protected when the mask is enlarged", () => {
+    const width = 18, height = 14;
+    const regions = Uint8Array.from({ length: width * height }, (_, p) => p % width < 11 ? 1 : 2);
+    const confidence = new Uint8Array(regions.length).fill(255);
+    const at = (x, y) => y * width + x;
+    regions[at(4, 6)] = 0; // Small hand or accessory inside the garment outline.
+    confidence[at(7, 6)] = 0; // Below the model's confidence threshold.
+    const mask = insetConfidenceMask(confidence, regions, width, height);
+    for (const [x, y] of [[4, 6], [3, 5], [4, 8], [7, 6], [8, 5], [10, 5], [11, 5]]) {
+        assert.equal(mask[at(x, y)], 0);
+    }
+    assert.equal(mask[at(4, 9)], 85);
+    assert.equal(mask[at(14, 6)], 170);
+    const scaled = resizeMask(mask, width, height, width * 3, height * 3);
+    const rgba = new Uint8Array(scaled.length * 4).fill(128);
+    for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
+    const result = renderTone(rgba, width * 3, height * 3, new Float32Array(mask.length).fill(32),
+        width, height, scaled, 100);
+    for (let p = 0; p < scaled.length; p++) {
+        if (!scaled[p]) assert.deepEqual(result.subarray(p * 4, p * 4 + 4), rgba.subarray(p * 4, p * 4 + 4));
+    }
+    assert.ok(result.some((value, i) => value !== rgba[i]));
 });
 const { buildToneField, buildToneBands, combineToneBands, renderTone } = require("../plugin/host/retouch/clothTone");
 

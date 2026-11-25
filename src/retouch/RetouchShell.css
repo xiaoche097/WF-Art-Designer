@@ -57,7 +57,8 @@
 .wfa-retouch-list li button[aria-pressed] { display: grid; text-align: start; }
 .wfa-retouch-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfa-retouch-list small { overflow-wrap: anywhere; opacity: .88; }
-.wfa-retouch-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); gap: 8px; align-items: start; }
+.wfa-retouch-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.wfa-retouch-images figcaption { margin-bottom: 5px; }
 .wfa-retouch figure { min-width: 0; margin: 0; text-align: center; }
 .wfa-retouch canvas { display: block; width: 100%; height: auto; border-radius: 4px; background: rgba(128, 143, 168, .16); }
 .wfa-retouch-reference { position: relative; }

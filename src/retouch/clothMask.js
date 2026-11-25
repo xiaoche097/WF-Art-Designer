@@ -1,4 +1,5 @@
 import { env, InferenceSession, Tensor } from "onnxruntime-web/wasm";
+import { insetConfidenceMask } from "../../plugin/host/retouch/clothComposite.js";
 
 const INPUT_EDGE = 512;
 const MODEL = "schp-atr-18-int8-static.onnx";
@@ -97,10 +98,11 @@ function clothingPixels(logits, frame, limit) {
             } else if (score > runnerUp) runnerUp = score;
         }
         const region = classRegion[label];
-        if (!region || best - runnerUp < .8) continue;
+        if (!region || best - runnerUp <= 1.5) continue;
         type[p] = region;
-        opacity[p] = Math.round(Math.min(1, (best - runnerUp - .8) / 1.4) * 255);
+        opacity[p] = Math.round(Math.min(1, (best - runnerUp - 1.5) / 1.5) * 255);
     }
+    const safeOpacity = insetConfidenceMask(opacity, type, cols, rows);
     const mask = new Uint8ClampedArray(width * height);
     const regions = new Uint8Array(width * height);
     for (let y = 0, p = 0; y < height; y++) {
@@ -108,7 +110,7 @@ function clothingPixels(logits, frame, limit) {
         for (let x = 0; x < width; x++, p++) {
             if (!limit[p] || pixels[p * 4 + 3] !== 255) continue;
             const t = row + Math.floor((x + .5) * cols / width);
-            mask[p] = Math.min(limit[p], opacity[t]);
+            mask[p] = Math.min(limit[p], safeOpacity[t]);
             if (mask[p]) regions[p] = type[t];
         }
     }

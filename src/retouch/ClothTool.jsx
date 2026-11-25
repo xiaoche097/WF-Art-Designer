@@ -58,6 +58,7 @@ export function ClothTool({ connected }) {
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState(null);
     const [showOriginal, setShowOriginal] = useState(false);
+    const [showMask, setShowMask] = useState(false);
     const [applied, setApplied] = useState(false);
     const [brush, setBrush] = useState(null);
     const [past, setPast] = useState([]);
@@ -99,6 +100,7 @@ export function ClothTool({ connected }) {
         setDraft(null);
         setBrush(null);
         setShowOriginal(false);
+        setShowMask(false);
         setApplied(false);
         stroke.current = null;
     }
@@ -265,7 +267,13 @@ export function ClothTool({ connected }) {
                     {applied ? "已生成图层" : "生成图层到 Photoshop"}
                 </button>
             </div>
-            <Preview frame={source.frame} pixels={pixels} overlay={brush && mask} interactive={Boolean(brush && !applied)} handlers={handlers} />
+            <div className="wfa-retouch-actions">
+                {edit && <button type="button" aria-pressed={showMask} onClick={() => setShowMask(value => !value)}>
+                    {showMask ? "隐藏衣物范围" : "查看衣物范围"}
+                </button>}
+            </div>
+            <Preview frame={source.frame} pixels={pixels} overlay={(showMask || brush) && mask}
+                interactive={Boolean(brush && !applied)} handlers={handlers} />
             {!!source.approvedClothing && <ClothFinishing key={source.id} source={source} mask={edit?.mask}
                 disabled={busy || applied} onWrite={(candidate, area, scope) =>
                     run("正在写入局部修复图层…", () => writeLayer({

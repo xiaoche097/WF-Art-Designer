@@ -38,19 +38,38 @@ function resizeMask(mask, width, height, targetWidth, targetHeight) {
     return result;
 }
 
-function insideGarment(mask, regions, width, height, shoe = false) {
+function interiorMask(mask, regions, width, height) {
     if (mask.length !== width * height || regions.length !== mask.length) throw Error("衣物识别范围尺寸不匹配");
     const result = new Uint8Array(mask.length);
     for (let y = 1; y < height - 1; y++) {
         for (let x = 1, p = y * width + 1; x < width - 1; x++, p++) {
             const label = regions[p];
-            if (shoe ? label !== 4 : !([1, 2, 3, 5].includes(label))) continue;
-            if (regions[p - 1] !== label || regions[p + 1] !== label ||
-                regions[p - width] !== label || regions[p + width] !== label) continue;
-            result[p] = Math.min(mask[p], mask[p - 1], mask[p + 1], mask[p - width], mask[p + width]);
+            if (!label || !mask[p]) continue;
+            const top = p - width, bottom = p + width;
+            if (regions[top - 1] !== label || regions[top] !== label || regions[top + 1] !== label ||
+                regions[p - 1] !== label || regions[p + 1] !== label ||
+                regions[bottom - 1] !== label || regions[bottom] !== label || regions[bottom + 1] !== label) continue;
+            result[p] = Math.min(mask[top - 1], mask[top], mask[top + 1], mask[p - 1], mask[p], mask[p + 1],
+                mask[bottom - 1], mask[bottom], mask[bottom + 1]);
         }
     }
     return result;
 }
 
-module.exports = { composite, constrainMask, resizeMask, insideGarment };
+function insideGarment(mask, regions, width, height, shoe = false) {
+    const result = interiorMask(mask, regions, width, height);
+    for (let p = 0; p < result.length; p++) {
+        if (shoe ? regions[p] !== 4 : ![1, 2, 3, 5].includes(regions[p])) result[p] = 0;
+    }
+    return result;
+}
+
+// Leave a hard safety margin in the model grid, then feather only into reliable fabric.
+function insetConfidenceMask(confidence, regions, width, height) {
+    const hardMargin = interiorMask(interiorMask(confidence, regions, width, height), regions, width, height);
+    const inner = interiorMask(hardMargin, regions, width, height);
+    const core = interiorMask(inner, regions, width, height);
+    return hardMargin.map((weight, p) => Math.round((weight + inner[p] + core[p]) / 3));
+}
+
+module.exports = { composite, constrainMask, resizeMask, insideGarment, insetConfidenceMask };
