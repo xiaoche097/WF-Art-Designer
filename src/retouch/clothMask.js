@@ -83,7 +83,7 @@ function clothingPixels(logits, frame, limit) {
     if (classes !== 18) throw Error("衣物模型输出类别不符合预期");
     const plane = rows * cols;
     const scores = logits.data;
-    const classRegion = { 4: 1, 5: 2, 6: 2, 7: 3 };
+    const classRegion = { 4: 1, 5: 5, 6: 2, 7: 3, 9: 4, 10: 4 };
     const type = new Uint8Array(plane);
     const opacity = new Uint8Array(plane);
     for (let p = 0; p < plane; p++) {
@@ -97,9 +97,9 @@ function clothingPixels(logits, frame, limit) {
             } else if (score > runnerUp) runnerUp = score;
         }
         const region = classRegion[label];
-        if (!region || best - runnerUp < .35) continue;
+        if (!region || best - runnerUp < .8) continue;
         type[p] = region;
-        opacity[p] = Math.round(Math.min(1, (best - runnerUp - .35) / 1.4) * 255);
+        opacity[p] = Math.round(Math.min(1, (best - runnerUp - .8) / 1.4) * 255);
     }
     const mask = new Uint8ClampedArray(width * height);
     const regions = new Uint8Array(width * height);

@@ -1,5 +1,5 @@
 const { app, action, core, imaging, constants } = require("photoshop");
-const { constrainMask, resizeMask } = require("./clothComposite");
+const { constrainMask, resizeMask, insideGarment } = require("./clothComposite");
 const { buildToneField, buildToneBands, combineToneBands, renderTone } = require("./clothTone");
 const { toBase64 } = require("./retouchHost");
 
@@ -246,6 +246,27 @@ function decodeMask(text, length) {
     return bytes;
 }
 
+function decodeScope(source, mask, regions, shoe) {
+    const { w, h, bytes } = source.preview;
+    const labels = decodeMask(regions, w * h);
+    const detected = decodeMask(mask, w * h);
+    const available = resizeMask(source.limit, source.width, source.height, w, h);
+    return { labels, mask: constrainMask(insideGarment(detected, labels, w, h, shoe), bytes, [available]) };
+}
+
+function registerScope({ id, mask, regions }) {
+    const { source } = requireCurrent(id);
+    const clothing = decodeScope(source, mask, regions, false);
+    const shoes = decodeScope(source, mask, regions, true);
+    source.scope = { clothing: clothing.mask, shoes: shoes.mask, labels: clothing.labels };
+    return { clothing: toBase64(clothing.mask), shoes: toBase64(shoes.mask) };
+}
+
+function protectedMask(source, mask, scope) {
+    if (!source.scope || !["clothing", "shoes"].includes(scope)) throw Error("请重新识别衣物范围后再继续");
+    return constrainMask(decodeMask(mask, source.preview.w * source.preview.h), source.preview.bytes, [source.scope[scope]]);
+}
+
 function validateSettings(settings) {
     if (!settings) throw Error("缺少衣物美化设置");
     const { upper = 100, lower = 100, fine, coarse } = settings;
@@ -265,10 +286,11 @@ function detailedPreview(source, previewMask = null) {
     return { frame, mask };
 }
 
-function getPreview({ id, mask, regions, fromPhotoshop, settings }) {
+function getPreview({ id, mask, regions, fromPhotoshop, settings, scope }) {
     const { source } = requireCurrent(id);
     if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
-    const previewMask = mask == null && fromPhotoshop ? null : decodeMask(mask, source.preview.w * source.preview.h);
+    const previewMask = scope ? protectedMask(source, mask, scope)
+        : mask == null && fromPhotoshop ? null : decodeMask(mask, source.preview.w * source.preview.h);
     const { frame, mask: detailedMask } = detailedPreview(source, previewMask);
     const regionMap = regions == null ? null : decodeMask(regions, source.preview.w * source.preview.h);
     const labels = regionMap && resizeMask(regionMap, source.preview.w, source.preview.h, frame.w, frame.h);
@@ -277,32 +299,48 @@ function getPreview({ id, mask, regions, fromPhotoshop, settings }) {
         settings: validateSettings(settings) };
 }
 
-async function apply({ id, mask, regions, fromPhotoshop, strength, settings }) {
+async function apply({ id, mask, regions, fromPhotoshop, strength, settings, scope, generated }) {
     return core.executeAsModal(async ({ hostControl }) => {
         const { doc, source } = requireCurrent(id);
         const { rgba, width, height, bounds, limit, preview } = source;
         const controls = settings !== undefined ? validateSettings(settings) : null;
         const retouch = controls || strength !== undefined;
+        if (scope && !controls) throw Error("缺少局部修饰设置");
         if (!controls && retouch && (!Number.isInteger(strength) || strength < 1 || strength > 100)) throw Error("美化强度必须为 1 到 100");
-        if (controls && !controls.fine && !controls.coarse) throw Error("请先调整细褶或粗褶强度");
+        if (generated && !scope) throw Error("生成结果缺少已确认的衣物区域");
+        if (scope === "shoes" && !generated) throw Error("鞋区仅用于独立鞋面修复");
+        if (controls && !generated && !controls.fine && !controls.coarse) throw Error("请先调整细褶或粗褶强度");
         if (fromPhotoshop && !source.hasMask) throw Error("请先读取 Photoshop 像素蒙版或选区");
-        const previewMask = mask == null && fromPhotoshop
+        const previewMask = scope ? protectedMask(source, mask, scope) : mask == null && fromPhotoshop
             ? resizeMask(limit, width, height, preview.w, preview.h)
             : decodeMask(mask, preview.w * preview.h);
-        const previewRegions = regions == null ? null : decodeMask(regions, preview.w * preview.h);
-        const outputMask = fromPhotoshop && mask == null
+        const previewRegions = scope ? source.scope.labels : regions == null ? null : decodeMask(regions, preview.w * preview.h);
+        const outputMask = !scope && fromPhotoshop && mask == null
             ? new Uint8Array(limit)
             : constrainMask(resizeMask(previewMask, preview.w, preview.h, width, height), rgba, [limit]);
         if (retouch) {
             const labels = controls && previewRegions && resizeMask(previewRegions, preview.w, preview.h, width, height);
             for (let p = 0; p < outputMask.length; p++) {
-                const disabled = controls && (labels?.[p] === 2 ? !controls.lower : !controls.upper);
+                const lower = labels?.[p] === 2 || labels?.[p] === 5;
+                const disabled = !generated && controls && (lower ? !controls.lower : !controls.upper);
                 if (disabled || rgba[p * 4 + 3] !== 255) outputMask[p] = 0;
             }
         }
         if (!outputMask.some(Boolean)) throw Error("蒙版为空，没有可写入的区域");
         let pixelData = rgba;
-        if (controls) {
+        if (generated) {
+            const candidate = decodeMask(generated, preview.w * preview.h * 4);
+            pixelData = new Uint8Array(rgba);
+            for (let y = 0, p = 0; y < height; y++) {
+                const row = Math.floor((y + .5) * preview.h / height) * preview.w;
+                for (let x = 0; x < width; x++, p++) {
+                    if (!outputMask[p]) continue;
+                    const i = (row + Math.floor((x + .5) * preview.w / width)) * 4;
+                    if (candidate[i + 3] !== 255) { outputMask[p] = 0; continue; }
+                    pixelData.set(candidate.subarray(i, i + 3), p * 4);
+                }
+            }
+        } else if (controls) {
             const { frame, mask: detailedMask } = detailedPreview(source, mask == null && fromPhotoshop ? null : previewMask);
             const labels = previewRegions && resizeMask(previewRegions, preview.w, preview.h, frame.w, frame.h);
             const field = combineToneBands(buildToneBands(frame.bytes, detailedMask, frame.w, frame.h), controls, labels);
@@ -313,7 +351,8 @@ async function apply({ id, mask, regions, fromPhotoshop, strength, settings }) {
             pixelData = renderTone(rgba, width, height, field, preview.w, preview.h, outputMask, strength, false);
         }
         if (retouch && pixelData.every((value, index) => value === rgba[index])) throw Error("当前区域或强度没有可见变化，请调整强度或蒙版");
-        const name = controls ? `衣物美化 · 细褶 ${controls.fine} 粗褶 ${controls.coarse}`
+        const name = generated ? (scope === "shoes" ? "鞋面修复 · AI" : "衣物精修 · AI")
+            : controls ? `衣物美化 · 细褶 ${controls.fine} 粗褶 ${controls.coarse}`
             : retouch ? `衣物美化 · ${strength}%` : "衣物美化 · 分割副本";
         const history = await hostControl.suspendHistory({ documentID: doc.id, name });
         let success = false, frame, gray;
@@ -323,6 +362,17 @@ async function apply({ id, mask, regions, fromPhotoshop, strength, settings }) {
             if (top && doc.layers[0].id !== layer.id) await layer.move(top, constants.ElementPlacement.PLACEBEFORE);
             layer.visible = false;
             const targetBounds = { left: bounds.left, top: bounds.top };
+            if (scope) {
+                for (let p = 0; p < outputMask.length; p++) {
+                    const i = p * 4;
+                    if (!outputMask[p] || pixelData[i] === rgba[i] && pixelData[i + 1] === rgba[i + 1] &&
+                        pixelData[i + 2] === rgba[i + 2]) {
+                        outputMask[p] = 0;
+                        pixelData.fill(0, i, i + 4);
+                    }
+                }
+                if (!outputMask.some(Boolean)) throw Error("当前范围没有可写入的效果");
+            }
             frame = await imaging.createImageDataFromBuffer(pixelData, { width, height, components: 4,
                 colorSpace: "RGB", colorProfile: PROFILE, chunky: true });
             await imaging.putPixels({ documentID: doc.id, layerID: layer.id, imageData: frame, targetBounds });
@@ -380,4 +430,4 @@ async function segment({ id, token, points }) {
     }
 }
 
-module.exports = { inspect, openImage, prepareCopy, read, sampleDetail, apply, segment, getPreview, validateSettings };
+module.exports = { inspect, openImage, prepareCopy, read, sampleDetail, apply, segment, getPreview, validateSettings, registerScope };

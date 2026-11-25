@@ -97,7 +97,8 @@ function combineToneBands(bands, settings, regions) {
     const upper = (settings.upper ?? 100) / 100;
     const lower = (settings.lower ?? 100) / 100;
     for (let p = 0; p < result.length; p++) {
-        const amount = regions?.[p] === 2 ? lower : upper;
+        const region = regions?.[p];
+        const amount = region === 2 || region === 5 ? lower : upper;
         result[p] = amount * Math.max(-48, Math.min(48, (bands.fine[p] * settings.fine + bands.coarse[p] * settings.coarse) / 100));
     }
     return result;

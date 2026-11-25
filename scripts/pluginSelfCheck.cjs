@@ -58,6 +58,7 @@ const BANANA_FEATURE_FILES = new Set([
     "src/comfy/ComfyShell.jsx",
     "src/forge/ForgeShell.jsx",
     "src/hooks/usePersistedState.js",
+    "src/retouch/ClothFinishing.jsx",
     "src/runninghub/ui/RhWorkPanel.jsx",
     "src/runninghub/ui/RunninghubShell.jsx",
     "src/utils/dropdownFocusEffect.js",

@@ -7,7 +7,7 @@ export function getClothParts(mask, regions) {
     if (!mask) return parts;
     for (let index = 0; index < mask.length; index++) {
         if (!mask[index]) continue;
-        if (regions?.[index] === 2) parts.lower = true;
+        if (regions?.[index] === 2 || regions?.[index] === 5) parts.lower = true;
         else if (regions?.[index] === 3) parts.dress = true;
         else parts.upper = true;
     }

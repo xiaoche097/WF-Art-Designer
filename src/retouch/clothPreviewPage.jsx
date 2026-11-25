@@ -36,7 +36,7 @@ function Workspace({ frame }) {
         if (!showMask) return;
         const colors = new Uint8ClampedArray(mask.length * 4);
         for (let p = 0; p < mask.length; p++) {
-            const lower = regions?.[p] === 2;
+            const lower = regions?.[p] === 2 || regions?.[p] === 5;
             colors[p * 4] = lower ? 255 : 70;
             colors[p * 4 + 1] = lower ? 174 : 164;
             colors[p * 4 + 2] = lower ? 48 : 255;

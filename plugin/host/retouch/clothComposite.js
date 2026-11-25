@@ -38,4 +38,19 @@ function resizeMask(mask, width, height, targetWidth, targetHeight) {
     return result;
 }
 
-module.exports = { composite, constrainMask, resizeMask };
+function insideGarment(mask, regions, width, height, shoe = false) {
+    if (mask.length !== width * height || regions.length !== mask.length) throw Error("衣物识别范围尺寸不匹配");
+    const result = new Uint8Array(mask.length);
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1, p = y * width + 1; x < width - 1; x++, p++) {
+            const label = regions[p];
+            if (shoe ? label !== 4 : !([1, 2, 3, 5].includes(label))) continue;
+            if (regions[p - 1] !== label || regions[p + 1] !== label ||
+                regions[p - width] !== label || regions[p + width] !== label) continue;
+            result[p] = Math.min(mask[p], mask[p - 1], mask[p + 1], mask[p - width], mask[p + width]);
+        }
+    }
+    return result;
+}
+
+module.exports = { composite, constrainMask, resizeMask, insideGarment };

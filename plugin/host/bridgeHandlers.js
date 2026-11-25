@@ -1652,6 +1652,9 @@ export function setupBridge(webviewEl) {
                 case "cloth.previewDialog":
                     result = await require("./retouch/clothPreviewDialog").showClothPreview(args[0]);
                     break;
+                case "cloth.registerScope":
+                    result = clothHost.registerScope(args[0]);
+                    break;
                 case "cloth.detail":
                     result = clothHost.sampleDetail(args[0]);
                     break;

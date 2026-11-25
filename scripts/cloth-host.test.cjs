@@ -1,7 +1,23 @@
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 const { test } = require("node:test");
-const { composite, constrainMask } = require("../plugin/host/retouch/clothComposite");
+const { composite, constrainMask, insideGarment } = require("../plugin/host/retouch/clothComposite");
+
+test("garment and shoe scope erodes boundaries and never accepts skin, accessories or background", () => {
+    const width = 9, height = 5;
+    const regions = Uint8Array.from({ length: width * height }, (_, p) =>
+        p % width < 4 ? 1 : p % width > 4 ? 4 : 0);
+    const mask = new Uint8Array(regions.length).fill(255);
+    const clothing = insideGarment(mask, regions, width, height);
+    const shoes = insideGarment(mask, regions, width, height, true);
+    assert.equal(clothing[2 * width + 2], 255);
+    assert.equal(clothing[2 * width + 3], 0);
+    assert.equal(shoes[2 * width + 6], 255);
+    for (let p = 0; p < regions.length; p++) {
+        if (regions[p] !== 1) assert.equal(clothing[p], 0);
+        if (regions[p] !== 4) assert.equal(shoes[p], 0);
+    }
+});
 const { buildToneField, buildToneBands, combineToneBands, renderTone } = require("../plugin/host/retouch/clothTone");
 
 test("clothing intensity lifts fold shadows without changing alpha or unmasked pixels", () => {
@@ -187,6 +203,19 @@ test("P0/P1 bridge offsets, soft mask, result layer and stale snapshot guard", a
     await host.apply({ id: separated.id, fromPhotoshop: true, regions, settings: { upper: 100, lower: 0, ...settings } });
     assert.equal(writeMask.imageData.data[3 * 8 + 3], 127);
     assert.equal(writeMask.imageData.data[3 * 8 + 4], 0);
+    const scoped = await host.read({ docId: copy.docId, layerId: target.id });
+    const proposed = Buffer.alloc(64, 255).toString("base64");
+    const targetLabels = Buffer.from(Uint8Array.from({ length: 64 }, (_, p) =>
+        p % 8 >= 2 && p % 8 <= 5 && p >= 16 && p < 48 ? 1 : 0)).toString("base64");
+    const scope = host.registerScope({ id: scoped.id, mask: proposed, regions: targetLabels });
+    assert.equal(Buffer.from(scope.clothing, "base64").filter(Boolean).length, 4);
+    const generated = Buffer.alloc(64 * 4, 255).toString("base64");
+    await host.apply({ id: scoped.id, mask: proposed, generated, scope: "clothing", settings });
+    for (let p = 0; p < 64; p++) {
+        if (Buffer.from(scope.clothing, "base64")[p]) continue;
+        assert.equal(writeMask.imageData.data[p], 0);
+        assert.deepEqual(writePixels.imageData.data.slice(p * 4, p * 4 + 4), new Uint8Array(4));
+    }
     mock.app.activeDocument = doc;
     doc.mode = "rgb";
     doc.bitsPerChannel = 8;

@@ -3,6 +3,7 @@ import { invoke } from "../bridge/uxpBridge.js";
 import { buildToneBands, combineToneBands, renderTone } from "../../plugin/host/retouch/clothTone.js";
 import { findClothes } from "./clothMask.js";
 import { ClothSliders, DEFAULT_CLOTH_SETTINGS, getClothParts } from "./ClothSliders.jsx";
+import { ClothFinishing } from "./ClothFinishing.jsx";
 
 const decode = value => Uint8ClampedArray.from(atob(value), char => char.charCodeAt(0));
 
@@ -43,7 +44,7 @@ function brushAt(mask, source, point, radius, add) {
             const strength = Math.min(1, 2 * (1 - Math.hypot(x - point.x, y - point.y) / radius));
             const i = y * width + x;
             if (strength <= 0 || pixels[4 * i + 3] !== 255) continue;
-            mask[i] = add ? Math.max(mask[i], source.limit[i] * strength) : mask[i] * (1 - strength);
+            mask[i] = add ? Math.max(mask[i], source.approvedClothing[i] * strength) : mask[i] * (1 - strength);
         }
     }
 }
@@ -120,23 +121,25 @@ export function ClothTool({ connected }) {
             limit: decode(result.constraint),
         };
         setSource(next);
-        if (selectedLayer != null) {
-            setEdit({ mask: next.limit, fromPhotoshop: true });
-            notify(null);
-            return;
-        }
         notify("正在识别衣物…");
         try {
             const detected = await findClothes(next.frame, next.limit);
             if (!detected) {
-                notify("没找到清晰的衣物区域，可在「高级」中添加蒙版。", true);
+                notify("没有可靠的衣物范围。请调整 Photoshop 选区或换图后重新读取。", true);
                 return;
             }
-            setEdit({ ...detected, fromPhotoshop: false });
-            notify(null);
+            const approved = await invoke("cloth.registerScope", {
+                id: next.id, mask: encode(detected.mask), regions: encode(detected.regions),
+            });
+            const approvedClothing = decode(approved.clothing);
+            const approvedShoes = decode(approved.shoes);
+            setSource({ ...next, approvedClothing, approvedShoes, regions: detected.regions });
+            if (approvedClothing.some(Boolean)) setEdit({ mask: approvedClothing, regions: detected.regions });
+            else notify("未识别到可安全修饰的衣物范围。", true);
+            if (approvedClothing.some(Boolean)) notify(null);
         } catch (error) {
             console.warn("[WF] Clothing recognition failed", error);
-            notify("衣物识别暂不可用，可在「高级」中使用 Photoshop 蒙版或画笔。", true);
+            notify("衣物识别失败。请重新读取后再生成图层。", true);
         }
     }
 
@@ -194,7 +197,7 @@ export function ClothTool({ connected }) {
 
     const handlers = {
         onPointerDown: event => {
-            if (event.button !== 0 || busy || applied) return;
+            if (event.button !== 0 || busy || applied || !source.approvedClothing) return;
             stroke.current = {
                 last: pointFromEvent(event),
                 mask: new Uint8ClampedArray(edit?.mask ?? source.limit.length),
@@ -204,7 +207,7 @@ export function ClothTool({ connected }) {
         },
         onPointerMove: event => { if (stroke.current) paint(event); },
         onPointerUp: () => {
-            if (stroke.current) changeMask({ mask: stroke.current.mask, regions: edit?.regions, fromPhotoshop: false });
+            if (stroke.current) changeMask({ mask: stroke.current.mask, regions: source.regions });
             stroke.current = null;
             setDraft(null);
         },
@@ -212,8 +215,8 @@ export function ClothTool({ connected }) {
     };
 
     function getRequest() {
-        return { id: source.id, mask: edit.fromPhotoshop ? null : encode(edit.mask),
-            regions: edit.regions ? encode(edit.regions) : null, fromPhotoshop: edit.fromPhotoshop, settings };
+        return { id: source.id, mask: encode(edit.mask), scope: "clothing",
+            regions: encode(source.regions), settings };
     }
 
     async function writeLayer(request) {
@@ -263,15 +266,20 @@ export function ClothTool({ connected }) {
                 </button>
             </div>
             <Preview frame={source.frame} pixels={pixels} overlay={brush && mask} interactive={Boolean(brush && !applied)} handlers={handlers} />
+            {!!source.approvedClothing && <ClothFinishing key={source.id} source={source} mask={edit?.mask}
+                disabled={busy || applied} onWrite={(candidate, area, scope) =>
+                    run("正在写入局部修复图层…", () => writeLayer({
+                        id: source.id, mask: encode(area), generated: encode(candidate), scope, settings,
+                    }))} />}
             {!applied && <details className="wfa-cloth-advanced" onToggle={event => {
                 if (!event.currentTarget.open) setBrush(null);
             }}>
                 <summary>高级 · 蒙版</summary>
                 <div className="wfa-retouch-actions">
-                    {source.hasMask && <button type="button" disabled={busy} onClick={() => {
-                        changeMask({ mask: source.limit, fromPhotoshop: true });
+                    {source.approvedClothing?.some(Boolean) && <button type="button" disabled={busy} onClick={() => {
+                        changeMask({ mask: source.approvedClothing, regions: source.regions });
                         notify(null);
-                    }}>使用 Photoshop 选区或蒙版</button>}
+                    }}>恢复识别范围</button>}
                     {document?.masks.length > 0 && <label className="wfa-retouch-field">图层蒙版
                         <select value={layerId} disabled={busy} onChange={event => {
                             const id = event.target.value;
@@ -283,7 +291,7 @@ export function ClothTool({ connected }) {
                     </label>}
                 </div>
                 <div className="wfa-retouch-actions">
-                    <button type="button" disabled={busy} aria-pressed={brush === "add"} onClick={() => setBrush(brush === "add" ? null : "add")}>添加画笔</button>
+                    <button type="button" disabled={busy || !source.approvedClothing} aria-pressed={brush === "add"} onClick={() => setBrush(brush === "add" ? null : "add")}>恢复画笔</button>
                     <button type="button" disabled={busy || !edit} aria-pressed={brush === "erase"} onClick={() => setBrush(brush === "erase" ? null : "erase")}>擦除画笔</button>
                     <button type="button" disabled={busy || !past.length} onClick={undo}>撤销</button>
                     <button type="button" disabled={busy || !future.length} onClick={redo}>重做</button>
