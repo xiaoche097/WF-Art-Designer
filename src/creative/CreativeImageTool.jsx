@@ -4,7 +4,7 @@ import { isInWebView, photoshop, wfArtAssistantPeekUploadSessionRawBase64, wfArt
 import { captureAll } from "../components/ImageUpload/captureUtils.js";
 import { performAutoPlace } from "../utils/autoPlace.js";
 import { getTempResultFolder, saveImageWithBounds } from "../utils/imageSaver.js";
-import { creativeAssetFolder, creativeAssetReference, creativeImageTask, prepareCreativeImage, readCreativeProfile } from "./creativeWorkflows.js";
+import { creativeAssetFolder, creativeAssetReference, prepareCreativeImage } from "./creativeWorkflows.js";
 
 export async function placeCreativeResult(url) {
     const doc = await photoshop.app.getActiveDocument();
@@ -15,7 +15,7 @@ export async function placeCreativeResult(url) {
     await performAutoPlace([file.fileName], "创意中心", null, folder.token, doc.id, { force: true, group: false });
 }
 
-export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, onInspect, onApprove, requireReference = false }) {
+export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, onInspect, onApprove, imageRequestRef, requireReference = false }) {
     const inPhotoshop = isInWebView();
     const [reference, setReference] = useState(null);
     const [outputs, setOutputs] = useState([]);
@@ -42,16 +42,16 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
 
     function generate() {
         return run("正在使用织影生成…", async () => {
-            const profile = readCreativeProfile();
-            if (!profile?.model) throw new Error("请先在织影账户管理中选择图像模型");
+            const imageRequest = imageRequestRef.current;
+            if (!imageRequest?.task.model) throw new Error("请先在织影中选择可用的图像模型");
             const request = new AbortController();
             controller.current = request;
             try {
                 const images = [];
                 if (reference) images.push(reference);
                 if (asset) images.push(await creativeAssetReference(asset));
-                const task = creativeImageTask(profile, prompt, request.signal);
-                const next = await runBananaImage(profile, task, images);
+                const task = { ...imageRequest.task, prompt, signal: request.signal };
+                const next = await runBananaImage(imageRequest.config, task, images);
                 if (request.signal.aborted) return;
                 setOutputs(next);
                 setOutput(next[0]);

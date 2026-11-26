@@ -1,7 +1,6 @@
 import { readCompatLocalStorage } from "../utils/storageKeyCompat.js";
 import { referenceFromFile } from "../retouch/recolorImages.js";
 import { storage } from "../bridge/uxpShim.js";
-import { readModelImageOptions, resolveModelImageSelection } from "../banana/imageModelOptions.js";
 
 export const reversePrompt = `将依次输入的电商参考图拆成可复用的套图模板。一张图对应一条分镜，顺序与输入一致。
 归纳整套的布局、色温、用光、字体层级、留白与节奏。逐图说明镜头、布景、主体位置与留字区。
@@ -30,15 +29,6 @@ export function readCreativeProfile() {
     const selected = read("banana_provider");
     const profiles = read("banana_custom_providers");
     return (Array.isArray(profiles) ? profiles.find(item => item.id === selected) : null) || read("banana_zhiying_profile");
-}
-
-export function creativeImageTask(profile, prompt, signal) {
-    const model = String(profile?.model || "").trim();
-    const options = readModelImageOptions(null, model, profile?.protocol);
-    return {
-        ...resolveModelImageSelection(options, profile?.imageOptionsByModel?.[model], profile?.protocol),
-        openAiSizeMode: options.openAiSizeMode, model, prompt, signal, timeoutMs: 180000,
-    };
 }
 
 export async function prepareCreativeImage(file, maxEdge = 1024) {

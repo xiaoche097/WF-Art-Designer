@@ -18,7 +18,7 @@ import "./CreativeCenter.css";
 
 const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "", approved: {}, referenceId: "" };
 
-function Storyboard({ project, onUpdate, onSend, templates, assets, onSaved }) {
+function Storyboard({ project, onUpdate, onSend, templates, assets, onSaved, imageRequestRef }) {
     const shots = buildStoryboard(project, templates.find(template => template.id === project.suiteId));
     const selected = shots.find(shot => shot.id === project.activeShot) || shots[0];
     const shotKey = selected && `${project.suiteId}:${selected.id}`;
@@ -92,7 +92,7 @@ function Storyboard({ project, onUpdate, onSend, templates, assets, onSaved }) {
                 </div>
             </>}
         </section>
-        {selected && <CreativeImageTool key={shotKey} label={selected.title} prompt={draft} asset={asset}
+        {selected && <CreativeImageTool key={shotKey} label={selected.title} prompt={draft} asset={asset} imageRequestRef={imageRequestRef}
             onSaved={onSaved} onApprove={image => onUpdate(current => ({
                 ...current, approved: { ...current.approved, [shotKey]: image },
             }))} assetType="suite" requireReference />}
@@ -229,13 +229,13 @@ function PatternCheck({ incoming, model, setModel }) {
 }
 
 const patternTasks = {
-    extract: ["从商品图提取", "将参考商品图中真实存在的印花还原成平面图稿。去掉商品轮廓、褶皱、阴影与背景，保持图案轮廓、内部细节、配色与重复规律，输出单张正方形平面图稿。"],
-    draft: ["按主题起稿", "生成一张可作为重复单元使用的平面印花原稿。保持四边连续，均匀分布图案，输出正方形，去掉样机、文字、水印与边框。"],
+    extract: ["从商品图提取", "将参考商品图中真实存在的印花还原成平面图稿。去掉商品轮廓、褶皱、阴影与背景，保持图案轮廓、内部细节、配色与重复规律，输出单张平面图稿。"],
+    draft: ["按主题起稿", "生成一张可作为重复单元使用的平面印花原稿。保持四边连续，均匀分布图案，去掉样机、文字、水印与边框。"],
     recolor: ["按要求改色", "只修改指定颜色。保留原图案轮廓、纹样密度、元素相对位置与接缝关系，输出一张完整平面图稿。"],
-    variant: ["衍生新款", "基于参考图的主题和风格创作可平铺的新款，输出正方形平面图稿，无产品样机、文字、水印或边框。"],
+    variant: ["衍生新款", "基于参考图的主题和风格创作可平铺的新款，输出平面图稿，无产品样机、文字、水印或边框。"],
 };
 
-function PatternStudio({ asset, onSaved, model, setModel }) {
+function PatternStudio({ asset, onSaved, model, setModel, imageRequestRef }) {
     const [tool, setTool] = useState("ai");
     const [mode, setMode] = useState("extract");
     const [notes, setNotes] = useState("");
@@ -260,7 +260,7 @@ function PatternStudio({ asset, onSaved, model, setModel }) {
                 <textarea rows={2} maxLength={1000} value={notes} onChange={event => setNotes(event.target.value)} />
             </label>
         </section>
-        <CreativeImageTool label={label} prompt={prompt} asset={asset} onSaved={onSaved} assetType="pattern" requireReference={mode !== "draft"}
+        <CreativeImageTool label={label} prompt={prompt} asset={asset} onSaved={onSaved} assetType="pattern" imageRequestRef={imageRequestRef} requireReference={mode !== "draft"}
             onInspect={inspect} />
         </div></div>
         <div hidden={tool !== "color"}><PatternColorTool onInspect={inspect} /></div>
@@ -268,7 +268,7 @@ function PatternStudio({ asset, onSaved, model, setModel }) {
     </div>;
 }
 
-function ModelStudio({ asset, onSaved }) {
+function ModelStudio({ asset, onSaved, imageRequestRef }) {
     const [description, setDescription] = useState("");
     const [pose, setPose] = useState("正面半身");
     const prompt = `以参考照片中的成年模特为定妆参考。保持面部身份、肤色、发型与五官比例稳定。本次拍摄：${pose}。${description.trim()}。保持商业摄影的真实肤质和自然动作，输出单张图片。`;
@@ -284,11 +284,11 @@ function ModelStudio({ asset, onSaved }) {
                 <textarea rows={2} value={description} maxLength={1000} onChange={event => setDescription(event.target.value)} />
             </label>
         </section>
-        <CreativeImageTool label="生成定妆参考" prompt={prompt} asset={asset} onSaved={onSaved} assetType="model" requireReference />
+        <CreativeImageTool label="生成定妆参考" prompt={prompt} asset={asset} onSaved={onSaved} assetType="model" imageRequestRef={imageRequestRef} requireReference />
     </div>;
 }
 
-export function CreativeCenter({ onSend }) {
+export function CreativeCenter({ onSend, imageRequestRef }) {
     const [page, setPage] = useState("storyboard");
     const [suiteTool, setSuiteTool] = useState("shots");
     const [templates, setTemplates] = usePersistedState("wfa_creative_suite_templates", []);
@@ -341,7 +341,7 @@ export function CreativeCenter({ onSend }) {
                             <button key={id} type="button" aria-pressed={suiteTool === id} onClick={() => setSuiteTool(id)}>{title}</button>)}
                     </div>
                     <div hidden={suiteTool !== "shots"}><Storyboard key={project.id} project={project} onUpdate={updateProject}
-                        onSend={onSend} templates={templates} assets={assets} onSaved={save} /></div>
+                        onSend={onSend} templates={templates} assets={assets} onSaved={save} imageRequestRef={imageRequestRef} /></div>
                     <div hidden={suiteTool !== "reverse"}><SuiteReverse model={visionModel} setModel={setVisionModel} onSave={suite => {
                         setTemplates(current => [...current, { ...suite, id: "suite-" + Date.now().toString(36) + "-" + current.length }]);
                     }} /></div>
@@ -352,8 +352,8 @@ export function CreativeCenter({ onSend }) {
                     })} />}
                 </div>
             </div>
-            <div hidden={page !== "pattern"}><PatternStudio asset={asset} onSaved={save} model={visionModel} setModel={setVisionModel} /></div>
-            <div hidden={page !== "model"}><ModelStudio asset={asset} onSaved={save} /></div>
+            <div hidden={page !== "pattern"}><PatternStudio asset={asset} onSaved={save} model={visionModel} setModel={setVisionModel} imageRequestRef={imageRequestRef} /></div>
+            <div hidden={page !== "model"}><ModelStudio asset={asset} onSaved={save} imageRequestRef={imageRequestRef} /></div>
             <div hidden={page !== "assets"}><CreativeAssetLibrary assets={assets} onSaved={save} onUse={item => {
                 setAssetId(item.id);
                 setPage(item.type === "model" ? "model" : item.type === "pattern" ? "pattern" : "storyboard");

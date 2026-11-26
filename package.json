@@ -1,7 +1,7 @@
 {
   "name": "wf-art-assistant",
   "private": true,
-  "version": "2.4.17",
+  "version": "2.4.18",
   "displayName": "WF美工助手",
   "description": "WF美工助手 Photoshop UXP panel for RunningHub repair, local cache, decoding, and return-image workflows.",
   "author": "WF美工助手",

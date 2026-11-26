@@ -982,6 +982,7 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
     const { pushStatus } = useStatus();
     const [activeProduct, setActiveProduct] = usePersistedState("wfa_active_product", "runninghub");
     const [zhiyingPrompt, setZhiyingPrompt] = useState("");
+    const zhiyingImageRequestRef = useRef(null);
     const [libraryUse, setLibraryUse] = useState(0);
     const [zhiyingPresets, setZhiyingPresets] = useState([]);
     const [personalLibrary, setPersonalLibrary] = usePersistedState("wfa_prompt_library_v1", []);
@@ -1341,13 +1342,14 @@ export function RunninghubShell({ isActiveProduct = true, browserPreview = false
                 <PsTools />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "creative"}>
-                <CreativeCenter onSend={useLibraryText} />
+                <CreativeCenter onSend={useLibraryText} imageRequestRef={zhiyingImageRequestRef} />
             </div>
             <div className="wfa-workspace" hidden={activeProductMode !== "retouch"}>
                 <RetouchShell />
             </div>
             <div className="wfa-workspace banana-product-panel" style={{ display: activeProductMode === "banana" ? "flex" : "none", flex: "0 0 auto", minHeight: 0, flexDirection: "column" }}>
                 <BananaShell
+                    imageRequestRef={zhiyingImageRequestRef}
                     activeProduct={activeProductMode}
                     prompt={zhiyingPrompt}
                     setPrompt={setZhiyingPrompt}

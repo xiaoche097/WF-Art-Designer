@@ -860,7 +860,7 @@ function BananaHome({ state, actions, libraryUse }) {
     </div>;
 }
 
-export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions, prompt, setPrompt, libraryUse, onPromptPresetsChange, personalLibrary }) {
+export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedSettings, onRunsChange, sharedTaskRuns, onDismissSharedRun, onRetrySharedPlace, onRegisterTaskActions, prompt, setPrompt, libraryUse, onPromptPresetsChange, personalLibrary, imageRequestRef }) {
     const { pushStatus } = sharedSettings;
     const [page, setPage] = useState("home");
     useEffect(() => { if (libraryUse) setPage("home"); }, [libraryUse]);
@@ -910,6 +910,18 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
     };
     const [concurrency, setConcurrency] = usePersistedState("banana_concurrency", 1);
     const [timeoutSec, setTimeoutSec] = usePersistedState("banana_timeout_sec", 600);
+    const imageRequest = useMemo(() => ({
+        model: modelId,
+        size: imageSelection.size,
+        aspectRatio: imageSelection.aspectRatio,
+        openAiSizeMode,
+        timeoutMs: Math.max(60, Number(timeoutSec) || 600) * 1000,
+    }), [modelId, imageSelection.size, imageSelection.aspectRatio, openAiSizeMode, timeoutSec]);
+    useLayoutEffect(() => {
+        if (!imageRequestRef) return;
+        imageRequestRef.current = { config: profile, task: imageRequest };
+        return () => { imageRequestRef.current = null; };
+    }, [imageRequestRef, profile, imageRequest]);
     const [promptPresets, setPromptPresets] = useState([]);
     const [pinnedPresets, setPinnedPresets] = usePersistedState("banana_prompt_pins_v1", []);
     const togglePinnedPreset = (id) => setPinnedPresets(current => {
@@ -1125,10 +1137,9 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
         const requestImages = imageEntries.map((entry) => entry.record).filter((item) => item?.base64);
         const runId = `banana_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const total = Math.max(1, Math.min(8, Number(concurrency) || 1));
-        const timeoutMs = Math.max(60, Number(timeoutSec) || 600) * 1000;
         const placeContext = normalizePlaceContext({ docId: image?.docId, bounds: image?.bounds }) || await recordPlaceContext();
         const promptSnapshot = bananaPromptWithImageLabels(prompt, imageEntries, multiImageMode);
-        const task = { model, size: imageSelection.size, aspectRatio: imageSelection.aspectRatio, openAiSizeMode, prompt: promptSnapshot, timeoutMs };
+        const task = { ...imageRequest, prompt: promptSnapshot };
         setPromptHistory((items) => addPromptHistoryItem(items, prompt));
         setPrompt("");
         const controller = new AbortController();
@@ -1226,7 +1237,7 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
             runControllers.current.delete(runId);
             releaseSubmitLock();
         }
-    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageSelection.size, imageSelection.aspectRatio, openAiSizeMode, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, timeoutSec, updateRun]);
+    }, [clearCapture, concurrency, config, confirmCaptureSelection, enqueueAutoPlace, imageRequest, modelId, multiImageMode, multiUploads, pendingUpload, prompt, provider, pushStatus, setMultiUploads, setPendingUpload, setPromptHistory, sharedSettings.failSoundFile, sharedSettings.successSoundFile, sharedSettings.uploadImageFormat, sharedSettings.uploadLongEdgeMax, supplierName, updateRun]);
 
     const dismiss = useCallback((id) => {
         runControllers.current.get(id)?.abort();
