@@ -14,6 +14,7 @@ import { CreativeAssetLibrary } from "./CreativeAssetLibrary.jsx";
 import { SuiteDelivery } from "./SuiteDelivery.jsx";
 import { PatternColorTool } from "./PatternColorTool.jsx";
 import { PatternListing } from "./PatternListing.jsx";
+import { StripeControl } from "./stripe/StripeControl.jsx";
 import "./CreativeCenter.css";
 
 const initialProject = { suiteId: "launch", product: "", facts: "", market: "", language: "简体中文", artDirection: "", approved: {}, referenceId: "" };
@@ -317,6 +318,9 @@ export function CreativeCenter({ onSend, imageRequestRef }) {
                 {[["storyboard", "套图"], ["pattern", "花型"], ["model", "模特"], ["assets", "素材库"]].map(([id, title]) =>
                     <button key={id} type="button" aria-pressed={page === id} onClick={() => setPage(id)}>{title}</button>)}
             </div>
+            <button type="button" className="wfa-creative-stripe-entry" aria-pressed={page === "stripe"}
+                onClick={() => setPage("stripe")}>智能条纹重构</button>
+            <div hidden={page !== "stripe"}><StripeControl onSend={onSend} /></div>
             {asset && (page === "pattern" || page === "model") && <div className="wfa-creative-reference">
                 <span>当前素材 · {asset.name}</span>
                 <button type="button" onClick={() => setAssetId("")}>清除</button>

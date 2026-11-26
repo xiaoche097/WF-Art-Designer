@@ -968,6 +968,7 @@ async function wfArtAssistantReadActiveSelectionRect(app, doc, { allowDomFallbac
 async function wfArtAssistantResolveCaptureBounds(app, doc, opts, docWidth, docHeight) {
     const frozenRect = wfArtAssistantRectFromPsBounds(opts?.frozenBounds || opts?.sourceBounds);
     if (frozenRect) return wfArtAssistantClampRectToDocument(frozenRect, docWidth, docHeight);
+    if (opts?.ignoreSelection === true) return { left: 0, top: 0, right: docWidth, bottom: docHeight };
     const pickedRect = await wfArtAssistantReadActiveSelectionRect(app, doc);
     if (opts?.requireSelection && !pickedRect) throw new Error("[NO_SELECTION]请先用框选工具框选需要处理的图片区域");
     const sourceRect = pickedRect || { left: 0, top: 0, right: docWidth, bottom: docHeight };

@@ -634,6 +634,7 @@ export const captureAll = async (mode = "canvas", opts = {}) => {
             longEdgeMax,
             splitMaskMode,
             requireSelection,
+            ignoreSelection: opts.ignoreSelection === true,
             __returnHostSession: true,
             __previewFromUpload: hostPreviewFromUpload,
             previewMaxEdge: previewEncodeMax,
