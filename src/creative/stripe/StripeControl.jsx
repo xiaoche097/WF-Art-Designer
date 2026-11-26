@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { isInWebView } from "../../bridge/uxpBridge.js";
 import { storage } from "../../bridge/uxpShim.js";
 import { analyzeStripes } from "./stripeAnalysis.js";
-import { captureStripeImage, loadStripeFile } from "./stripeImage.js";
+import { captureStripeImage, loadStripeFile, loadStripePhotoshopFile } from "./stripeImage.js";
 import { adjustStripeBands, stripeInstruction, stripePeriod, stripePixels, stripeTexturePng } from "./stripeTexture.js";
 import "./StripeControl.css";
 
@@ -179,11 +179,17 @@ export function StripeControl({ onSend }) {
     return <div className="wfa-creative-stack wfa-stripe" aria-label="智能条纹重构">
         <section className="wfa-creative-card">
             <header className="wfa-stripe-heading"><h3>智能条纹重构</h3><small>Stripe Control</small></header>
-            <label>导入原图<input type="file" accept="image/png,image/jpeg,image/webp" disabled={!!busy} onChange={event => {
+            <label>导入图片<input type="file" accept="image/png,image/jpeg,image/webp" disabled={!!busy} onChange={event => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
                 if (file) void load(() => loadStripeFile(file), initialRoi);
             }} /></label>
+            <label>读取 PSD / PSB<input type="file" accept=".psd,.psb" disabled={!!busy} onChange={event => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void load(() => loadStripePhotoshopFile(file), initialRoi);
+            }} /></label>
+            <p>直接取样文件保存的合成图。单独取某个图层时，可从 Photoshop 读取。</p>
             {isInWebView() && <div className="wfa-creative-buttons">
                 <select aria-label="Photoshop 取图范围" value={scope} disabled={!!busy} onChange={event => setScope(event.target.value)}>
                     <option value="canvas">当前画布</option><option value="layer">当前图层</option><option value="selection">当前选区</option>

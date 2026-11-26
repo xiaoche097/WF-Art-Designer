@@ -1,5 +1,6 @@
 import { captureAll } from "../../components/ImageUpload/captureUtils.js";
 import { wfArtAssistantPeekUploadSessionRawBase64, wfArtAssistantReleaseUploadSession } from "../../bridge/uxpBridge.js";
+import { photoshopFileLimit, readStripeComposite, sampleStripeComposite } from "./stripePsd.js";
 
 export async function decodeStripeImage(url, width, height) {
     const image = new Image();
@@ -23,6 +24,13 @@ export async function loadStripeFile(file) {
     const url = URL.createObjectURL(file);
     try { return await decodeStripeImage(url); }
     finally { URL.revokeObjectURL(url); }
+}
+
+export async function loadStripePhotoshopFile(file) {
+    if (file.size > photoshopFileLimit) throw new Error("文件超过 128 MB，请用 Photoshop 打开后读取图层或选区");
+    const composite = readStripeComposite(await file.arrayBuffer());
+    const { width, height, data } = sampleStripeComposite(composite);
+    return { frame: new ImageData(data, width, height), sourceWidth: composite.width, sourceHeight: composite.height };
 }
 
 export async function captureStripeImage(scope) {
