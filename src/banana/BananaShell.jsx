@@ -27,7 +27,7 @@ import {
 import { readCompatLocalStorage, removeCompatLocalStorage } from "../utils/storageKeyCompat.js";
 import { pruneCompletedRhRuns } from "../runninghub/hooks/wfaRunQueueRecords.js";
 import { ComfySettings } from "../comfy/ComfyShell.jsx";
-import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImage } from "./bananaApi.js";
+import { OPENAI_IMAGES, fetchBananaModels, resolveBananaRunConfig, runBananaImageUntilComplete } from "./bananaApi.js";
 import { bananaCancelled, retryBananaOperation } from "./bananaRetry.js";
 import { readModelImageOptions, resolveModelImageSelection } from "./imageModelOptions.js";
 import { getLibraryCategory, libraryCatalog, libraryCategories } from "../prompt-library/catalog.js";
@@ -1170,10 +1170,10 @@ export function BananaShell({ activeProduct = "banana", onChangeProduct, sharedS
                 const retryNotice = stage => ({ attempt, delayMs, error }) =>
                     updateStage(`${prefix}${stage}重试 ${attempt} 次，${Math.round(delayMs / 1000)} 秒后继续 · ${String(error?.message || error).slice(0, 110)}`);
                 try {
-                    const urls = await retryBananaOperation(() => runBananaImage(runConfig, { ...task, signal,
+                    const urls = await runBananaImageUntilComplete(runConfig, { ...task, signal,
                         onPoll: () => updateStage(`${prefix}正在接收供应商任务结果`),
                         onPollRetry: retryNotice("查询"),
-                    }, requestImages), { signal, onRetry: retryNotice("生成") });
+                    }, requestImages, { onRetry: retryNotice("生成") });
                     updateStage(`${prefix}保存回图`);
                     for (const url of urls) {
                         const fileIndex = ++nextFileIndex;

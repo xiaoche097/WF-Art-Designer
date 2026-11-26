@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { runBananaImage } from "../banana/bananaApi.js";
+import { runBananaImageUntilComplete } from "../banana/bananaApi.js";
 import { isInWebView, photoshop, wfArtAssistantPeekUploadSessionRawBase64, wfArtAssistantReleaseUploadSession } from "../bridge/uxpBridge.js";
 import { captureAll } from "../components/ImageUpload/captureUtils.js";
 import { performAutoPlace } from "../utils/autoPlace.js";
@@ -50,8 +50,12 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
                 const images = [];
                 if (reference) images.push(reference);
                 if (asset) images.push(await creativeAssetReference(asset));
-                const task = { ...imageRequest.task, prompt, signal: request.signal };
-                const next = await runBananaImage(imageRequest.config, task, images);
+                const retryNotice = stage => ({ attempt, delayMs, error }) => {
+                    setBusy(`${stage}重试 ${attempt} 次 · ${Math.ceil(delayMs / 1000)} 秒后继续 · ${String(error?.message || error).slice(0, 100)}`);
+                };
+                const task = { ...imageRequest.task, prompt, signal: request.signal,
+                    onPoll: () => setBusy("正在接收供应商任务结果…"), onPollRetry: retryNotice("查询") };
+                const next = await runBananaImageUntilComplete(imageRequest.config, task, images, { onRetry: retryNotice("生成") });
                 if (request.signal.aborted) return;
                 setOutputs(next);
                 setOutput(next[0]);
@@ -107,7 +111,7 @@ export function CreativeImageTool({ label, prompt, asset, onSaved, assetType, on
         </div>}
         <button type="button" className="wfa-creative-primary"
             disabled={!prompt.trim() || Boolean(busy) || (requireReference && !reference && !asset)} onClick={generate}>使用织影生成</button>
-        {busy === "正在使用织影生成…" && <button type="button" onClick={() => controller.current?.abort()}>取消生成</button>}
+        {controller.current && <button type="button" onClick={() => controller.current?.abort()}>取消生成</button>}
         {(busy || status) && <p role="status">{busy || status}</p>}
         {error && <p role="alert">{error}</p>}
         {output && <>

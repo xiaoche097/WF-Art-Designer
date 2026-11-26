@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runBananaImage } from "./bananaApi.js";
+import { runBananaImage, runBananaImageUntilComplete } from "./bananaApi.js";
 import { retryBananaOperation } from "./bananaRetry.js";
 
 const config = { baseUrl: "https://provider.example", apiKey: "fixture-key", protocol: "openai" };
@@ -16,7 +16,7 @@ test("retries only incomplete generation, including after many provider failures
         if (attempts === 9) return Response.json({ data: [] });
         return Response.json({ data: [{ b64_json: "AQID" }] });
     });
-    const result = await retryBananaOperation(() => runBananaImage(config, task, []), {
+    const result = await runBananaImageUntilComplete(config, task, [], {
         wait: noDelay, onRetry: ({ delayMs }) => outcomes.push(delayMs),
     });
     assert.deepEqual(result, ["data:image/png;base64,AQID"]);
@@ -34,6 +34,8 @@ test("stops after Key errors, authorization errors and network failures", async 
         () => Response.json({ code: 403, message: "Forbidden" }),
         () => Response.json({ error: { code: "invalid_api_key", message: "Authentication failed" } }, { status: 400 }),
         () => Response.json({ error: { message: "Gateway Timeout" } }, { status: 504 }),
+        () => Response.json({ error: { code: "insufficient_quota", message: "余额不足" } }, { status: 429 }),
+        () => Response.json({ error: { message: "Unsupported image size" } }, { status: 400 }),
         () => { throw new TypeError("Failed to fetch"); },
     ]) {
         reply = response;
@@ -64,26 +66,38 @@ test("an accepted task retries status checks on the same ID without a second gen
         if (options.method === "POST") {
             return Response.json({ status: "pending", task_id: "task-1", poll_url: "/v1/images/tasks/task-1" }, { status: 202 });
         }
-        if (++polls === 1) return Response.json({ error: { message: "Busy" } }, { status: 503 });
-        if (polls === 2) return Response.json({ status: "processing" });
+        if (++polls === 1) return Response.json({ error: { message: "Gateway Timeout" } }, { status: 504 });
+        if (polls === 2) throw new TypeError("Connection reset");
+        if (polls === 3) return Response.json({ status: "completed" });
         return Response.json({ status: "completed", result: { data: [{ url: "https://files.example/a.png" }] } });
     });
     const operation = retryBananaOperation(() => runBananaImage(config, task, []), { wait: noDelay });
-    for (let step = 0; step < 4; step++) {
+    for (const delay of [3000, 3000, 6000, 3000, 3000]) {
         await new Promise(resolve => setImmediate(resolve));
-        context.mock.timers.tick(3000);
+        context.mock.timers.tick(delay);
     }
     assert.deepEqual(await operation, ["https://files.example/a.png"]);
     assert.equal(requests.filter(([, method]) => method === "POST").length, 1);
-    assert.deepEqual(requests.slice(1).map(([url]) => url), Array(3).fill("https://provider.example/v1/images/tasks/task-1"));
+    assert.deepEqual(requests.slice(1).map(([url]) => url), Array(4).fill("https://provider.example/v1/images/tasks/task-1"));
 });
 
 test("an accepted task without a safe query address does not create a duplicate", async context => {
     let calls = 0;
     context.mock.method(globalThis, "fetch", async () => {
         calls++;
-        return Response.json({ status: "pending" }, { status: 202 });
+        return Response.json({ status: "pending" });
     });
     await assert.rejects(runBananaImage(config, task, []), error => error.retryable === false && /任务 ID/.test(error.message));
+    assert.equal(calls, 1);
+});
+
+test("content filtering stops the shared generator and avoids resubmission", async context => {
+    let calls = 0;
+    context.mock.method(globalThis, "fetch", async () => {
+        calls++;
+        return Response.json({ promptFeedback: { blockReason: "SAFETY" } });
+    });
+    await assert.rejects(runBananaImageUntilComplete({ ...config, protocol: "gemini" }, task, [], { wait: noDelay }),
+        error => error.retryable === false && /内容审核/.test(error.message));
     assert.equal(calls, 1);
 });
