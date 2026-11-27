@@ -103,24 +103,27 @@ export function APlusCrop({ connected }) {
         setBusy(true);
         setStatus(null);
         let saved = 0;
+        let folder;
         try {
-            const folder = await storage.localFileSystem.getFolder();
-            if (!folder) return;
-            const existing = new Set((await folder.getEntries()).map(item => item.name.toLowerCase()));
+            const parent = await storage.localFileSystem.getFolder();
+            if (!parent) return;
+            const existing = new Set((await parent.getEntries()).map(item => item.name.toLowerCase()));
             const base = source.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 96) || "A+";
+            const folderStem = `${base}_${target.title}`;
+            let folderName = folderStem;
+            for (let suffix = 2; existing.has(folderName.toLowerCase()); suffix++) folderName = `${folderStem} (${suffix})`;
             for (const [index, rect] of crops.entries()) {
-                const stem = `${base}_${target.suffix}_${String(index + 1).padStart(2, "0")}`;
-                let name = `${stem}.jpg`;
-                for (let suffix = 2; existing.has(name.toLowerCase()); suffix++) name = `${stem} (${suffix}).jpg`;
-                const blob = await encodeCrop(source, rect, mode);
+                const name = `${base}_${target.suffix}_${String(index + 1).padStart(2, "0")}.jpg`;
+                const bytes = await (await encodeCrop(source, rect, mode)).arrayBuffer();
+                if (!folder) folder = await parent.createFolder(folderName);
                 const file = await folder.createFile(name);
-                await file.write(await blob.arrayBuffer(), { format: storage.formats.binary, overwrite: false });
-                existing.add(name.toLowerCase());
+                await file.write(bytes, { format: storage.formats.binary, overwrite: false });
                 saved++;
             }
             setStatus({ text: `已保存 ${saved} 张 JPG 到 ${folder.nativePath || folder.name}。` });
         } catch (error) {
-            setStatus({ error: true, text: `${saved ? `已保存 ${saved} 张，其余未保存。 ` : ""}${error.message || "保存失败"}` });
+            const partial = saved ? `已保存 ${saved} 张到 ${folder.nativePath || folder.name}，其余未保存。 ` : "";
+            setStatus({ error: true, text: `${partial}${error.message || "保存失败"}` });
         } finally { setBusy(false); }
     }
 
@@ -166,7 +169,7 @@ export function APlusCrop({ connected }) {
                     </div>
                 </details>
                 <button type="button" className="wfa-aplus-save" disabled={!crops.length} onClick={saveCrops}>
-                    选择位置并保存 {crops.length} 张 JPG
+                    选择位置并保存 {crops.length} 张 JPG 到新文件夹
                 </button>
             </>}
         </fieldset>
