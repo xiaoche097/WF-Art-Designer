@@ -1,8 +1,6 @@
 import React, { useState } from "react";
-import { invoke, wfArtAssistantReleaseUploadSession } from "../bridge/uxpBridge.js";
+import { invoke } from "../bridge/uxpBridge.js";
 import { storage } from "../bridge/uxpShim.js";
-import { captureAll } from "../components/ImageUpload/captureUtils.js";
-import { createCreativeZip } from "../../plugin/host/creativeZip.js";
 import { A_PLUS, cropAPlusRegion, detectAPlusCrops } from "./aPlusCrop.js";
 
 async function decodeImage(url) {
@@ -12,14 +10,23 @@ async function decodeImage(url) {
     return image;
 }
 
-function analyzeSource(image, source) {
+async function paintPixels(ctx, pixels, scaleX, scaleY = scaleX) {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (!pixels.url) return;
+    const image = await decodeImage(pixels.url);
+    ctx.drawImage(image, pixels.offsetX * scaleX, pixels.offsetY * scaleY,
+        pixels.pixelWidth * scaleX, pixels.pixelHeight * scaleY);
+}
+
+async function analyzeSource({ pixels, ...source }) {
     const canvas = document.createElement("canvas");
-    const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const { width, height } = source;
+    const scale = Math.min(1, 1800 / Math.max(width, height));
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    await paintPixels(ctx, pixels, canvas.width / width, canvas.height / height);
     const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const plans = detectAPlusCrops(frame, width, height);
     return { ...source, preview: canvas.toDataURL("image/png"), plans };
@@ -31,36 +38,20 @@ async function encodeCrop(source, rect, mode) {
     canvas.width = target.width;
     canvas.height = target.height;
     const ctx = canvas.getContext("2d", { alpha: false });
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingQuality = "high";
-    if (source.docId != null) {
-        const { url, offsetX, offsetY } = await invoke("ps.aPlus.readTile", {
-            ...rect, mode, docId: source.docId, x: source.left + rect.x, y: source.top + rect.y,
-        });
-        const image = await decodeImage(url);
-        const scale = rect.width / target.width;
-        ctx.drawImage(image, offsetX / scale, offsetY / scale, image.naturalWidth / scale, image.naturalHeight / scale);
-    } else {
-        ctx.drawImage(source.image, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height);
-    }
+    const pixels = await invoke("ps.aPlus.readTile", {
+        ...rect, mode, docId: source.docId, layerId: source.layerId,
+        x: source.left + rect.x, y: source.top + rect.y,
+    });
+    await paintPixels(ctx, pixels, target.width / rect.width);
     return new Promise((resolve, reject) => canvas.toBlob(blob => {
         if (blob) resolve(blob);
         else reject(new Error("JPG 编码失败"));
     }, "image/jpeg", .92));
 }
 
-function download(blob, name) {
-    const element = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    element.href = url;
-    element.download = name;
-    element.click();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-}
-
 export function APlusCrop({ connected }) {
-    const [mode, setMode] = useState("pc");
+    const [mode, setMode] = useState(null);
     const [source, setSource] = useState(null);
     const [manual, setManual] = useState({});
     const [draft, setDraft] = useState({ x: 0, y: 0 });
@@ -69,40 +60,24 @@ export function APlusCrop({ connected }) {
     const target = A_PLUS[mode];
     const crops = manual[mode] ?? source?.plans[mode] ?? [];
 
-    async function loadSource(file) {
+    async function loadSource() {
         setBusy(true);
         setStatus(null);
-        let fileUrl;
-        let session;
+        setSource(null);
+        setMode(null);
         try {
-            let input;
-            let url;
-            if (file) {
-                fileUrl = URL.createObjectURL(file);
-                url = fileUrl;
-            } else {
-                const capture = await captureAll("canvas", {
-                    longEdgeMax: 1800, previewEncodeMax: 1800, uploadEncodeFormat: "png", __retainUploadSession: true,
-                });
-                session = capture.uploadSessionId;
-                const { left, top, right, bottom } = capture.bounds || {};
-                if (capture.docId == null || ![left, top, right, bottom].every(Number.isInteger)) {
-                    throw new Error("Photoshop 没有返回有效的画面范围。");
-                }
-                input = { name: "Photoshop", docId: capture.docId, left, top, width: right - left, height: bottom - top };
-                url = capture.previewBase64;
+            const { bounds, docId, layerId, layerName, name, ...pixels } = await invoke("ps.aPlus.readStamp");
+            const { left, top, right, bottom } = bounds || {};
+            if (!pixels.url || ![docId, layerId, left, top, right, bottom].every(Number.isInteger) || right <= left || bottom <= top) {
+                throw new Error("Photoshop 没有返回有效的盖印图层。");
             }
-            const image = await decodeImage(url);
-            setSource(analyzeSource(image, input || {
-                name: file.name.replace(/\.[^.]+$/, ""), image, width: image.naturalWidth, height: image.naturalHeight,
-            }));
+            setSource(await analyzeSource({ name: name.replace(/\.(psd|psb|tiff?)$/i, ""), layerName, docId,
+                layerId, left, top, width: right - left, height: bottom - top, pixels }));
             setManual({});
             setDraft({ x: 0, y: 0 });
         } catch (error) {
-            setStatus({ error: true, text: error.message || "读取图片失败" });
+            setStatus({ error: true, text: error.message || "读取盖印图层失败" });
         } finally {
-            if (fileUrl) URL.revokeObjectURL(fileUrl);
-            if (session) await wfArtAssistantReleaseUploadSession(session).catch(error => console.warn("释放 A+ 预览会话失败", error));
             setBusy(false);
         }
     }
@@ -129,36 +104,21 @@ export function APlusCrop({ connected }) {
         setStatus(null);
         let saved = 0;
         try {
-            let folder;
-            let existing;
-            if (connected) {
-                const root = await storage.localFileSystem.getFolder();
-                if (!root) return;
-                const entry = (await root.getEntries()).find(item => item.name.toLowerCase() === mode);
-                if (entry?.isFile) throw new Error(`保存位置已有名为 ${mode} 的文件，请选择其他文件夹。`);
-                folder = entry ? await root.getEntry(entry.name) : await root.createFolder(mode);
-                existing = new Set((await folder.getEntries()).map(item => item.name.toLowerCase()));
-            }
+            const folder = await storage.localFileSystem.getFolder();
+            if (!folder) return;
+            const existing = new Set((await folder.getEntries()).map(item => item.name.toLowerCase()));
             const base = source.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 96) || "A+";
-            const files = [];
             for (const [index, rect] of crops.entries()) {
                 const stem = `${base}_${target.suffix}_${String(index + 1).padStart(2, "0")}`;
                 let name = `${stem}.jpg`;
-                for (let suffix = 2; existing?.has(name.toLowerCase()); suffix++) name = `${stem} (${suffix}).jpg`;
+                for (let suffix = 2; existing.has(name.toLowerCase()); suffix++) name = `${stem} (${suffix}).jpg`;
                 const blob = await encodeCrop(source, rect, mode);
-                if (folder) {
-                    const file = await folder.createFile(name);
-                    await file.write(await blob.arrayBuffer(), { format: storage.formats.binary, overwrite: false });
-                    existing.add(name.toLowerCase());
-                    saved++;
-                } else files.push({ name, bytes: new Uint8Array(await blob.arrayBuffer()) });
+                const file = await folder.createFile(name);
+                await file.write(await blob.arrayBuffer(), { format: storage.formats.binary, overwrite: false });
+                existing.add(name.toLowerCase());
+                saved++;
             }
-            if (!folder) {
-                if (files.length === 1) download(new Blob([files[0].bytes], { type: "image/jpeg" }), files[0].name);
-                else download(new Blob([createCreativeZip(files)], { type: "application/zip" }), `${base}_${target.suffix}.zip`);
-                saved = files.length;
-            }
-            setStatus({ text: folder ? `已保存 ${saved} 张 JPG 到 ${folder.nativePath || folder.name}。` : `已开始下载 ${saved} 张 JPG。` });
+            setStatus({ text: `已保存 ${saved} 张 JPG 到 ${folder.nativePath || folder.name}。` });
         } catch (error) {
             setStatus({ error: true, text: `${saved ? `已保存 ${saved} 张，其余未保存。 ` : ""}${error.message || "保存失败"}` });
         } finally { setBusy(false); }
@@ -167,27 +127,19 @@ export function APlusCrop({ connected }) {
     return <section className="wfa-ps-tools-card wfa-aplus" aria-labelledby="wfa-aplus-title">
         <div className="wfa-ps-tools-heading">
             <h3 id="wfa-aplus-title">A+ 裁图</h3>
-            <p>自动拆分长图，预览裁切框后保存 JPG。</p>
+            <p>{connected ? "在 Photoshop 中选中最终盖印图层，读取后选择 PC 或 SJ。" : "请在 Photoshop 中打开 WF美工助手，读取最终盖印图层。"}</p>
         </div>
         <fieldset disabled={busy}>
-            <div className="wfa-aplus-row" role="group" aria-label="输出规格">
+            <button type="button" disabled={!connected} onClick={loadSource}>{source ? "重新读取盖印图层" : "读取 Photoshop 盖印图层"}</button>
+            {source && <p>{source.layerName} · {source.width} × {source.height} px</p>}
+            {source && <div className="wfa-aplus-row" role="group" aria-label="输出规格">
                 {Object.entries(A_PLUS).map(([key, spec]) => <button type="button" key={key}
                     aria-pressed={mode === key} onClick={() => { setMode(key); setDraft({ x: 0, y: 0 }); setStatus(null); }}>
                     {spec.title}<small>{spec.width} × {spec.height}</small>
                 </button>)}
-            </div>
-            <div className="wfa-aplus-row">
-                <label className="wfa-aplus-import">导入图片
-                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) loadSource(file);
-                    }} />
-                </label>
-                {connected && <button type="button" onClick={() => loadSource()}>读取 Photoshop</button>}
-            </div>
-            {source && <>
-                <p>{source.width} × {source.height} px · {crops.length} 张{source.docId != null && " · 当前选区或画布"}</p>
+            </div>}
+            {source && target && <>
+                <p>{crops.length} 张</p>
                 <div className="wfa-aplus-scroll">
                     <div className="wfa-aplus-preview">
                         <img src={source.preview} alt="带裁切框的原图预览" />
@@ -214,7 +166,7 @@ export function APlusCrop({ connected }) {
                     </div>
                 </details>
                 <button type="button" className="wfa-aplus-save" disabled={!crops.length} onClick={saveCrops}>
-                    {connected ? "保存" : "下载"} {crops.length} 张 JPG
+                    选择位置并保存 {crops.length} 张 JPG
                 </button>
             </>}
         </fieldset>

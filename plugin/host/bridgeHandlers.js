@@ -896,6 +896,31 @@ async function wfArtAssistantCaptureRgbPreviewPng({ app, imaging, doc, bounds, m
     }
 }
 
+async function wfArtAssistantReadAPlusPixels(doc, layerID, bounds, targetSize) {
+    const { imageData, sourceBounds, level } = await wfArtAssistantGetPixelsWithDepthFallback(
+        photoshop.app, photoshop.imaging, doc, {
+            documentID: doc.id, layerID, sourceBounds: bounds, ...(targetSize ? { targetSize } : {}),
+            componentSize: 8, colorSpace: "RGB", colorProfile: "sRGB IEC61966-2.1", applyAlpha: true,
+        });
+    try {
+        const { width, height, components } = imageData;
+        if (!width || !height) return { url: null };
+        const bytes = wfArtAssistantTypedPixelsToByteArray(await wfArtAssistantGetImageDataBuffer(imageData),
+            width * height * components);
+        const png = encodePNGFromRGB(width, height, bytes, components);
+        const factor = 2 ** (level || 0);
+        return {
+            url: `data:image/png;base64,${btoa(_uint8ToBinaryFallback(png))}`,
+            offsetX: sourceBounds.left * factor - bounds.left,
+            offsetY: sourceBounds.top * factor - bounds.top,
+            pixelWidth: (sourceBounds.right - sourceBounds.left) * factor,
+            pixelHeight: (sourceBounds.bottom - sourceBounds.top) * factor,
+        };
+    } finally {
+        imageData.dispose();
+    }
+}
+
 function wfArtAssistantAssertPreviewReadableMode(doc) {
     let modeName = "";
     try {
@@ -2566,34 +2591,47 @@ export function setupBridge(webviewEl) {
                     result = captureResult || { previewBase64: null };
                     break;
                 }
+                case "ps.aPlus.readStamp": {
+                    result = await photoshop.core.executeAsModal(async () => {
+                        const doc = photoshop.app.activeDocument;
+                        if (!doc) throw new Error("请先打开完成的 A+ 文档。");
+                        const layers = doc.activeLayers;
+                        const layer = layers.length === 1 ? layers[0] : null;
+                        if (!layer || layer.kind !== photoshop.constants.LayerKind.NORMAL) {
+                            throw new Error("请在图层面板中单独选中最终盖印图层。");
+                        }
+                        const { width, height } = wfArtAssistantDocumentPixelSize(doc);
+                        const rect = wfArtAssistantRectFromPsBounds(layer.boundsNoEffects, { requirePositive: true });
+                        const bounds = rect && {
+                            left: Math.max(0, rect.left), top: Math.max(0, rect.top),
+                            right: Math.min(width, rect.right), bottom: Math.min(height, rect.bottom),
+                        };
+                        if (!bounds || bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+                            throw new Error("盖印图层在画布内没有可读取的像素。");
+                        }
+                        const targetSize = wfArtAssistantPreviewTarget(bounds, 1800);
+                        return {
+                            ...(await wfArtAssistantReadAPlusPixels(doc, layer.id, bounds, targetSize)),
+                            docId: doc.id, layerId: layer.id, layerName: layer.name,
+                            name: doc.title || doc.name || "A+", bounds,
+                        };
+                    }, { commandName: "读取 A+ 盖印图层" });
+                    break;
+                }
                 case "ps.aPlus.readTile": {
-                    const { mode, docId, x, y, width, height } = args[0] || {};
+                    const { mode, docId, layerId, x, y, width, height } = args[0] || {};
                     const target = Object.hasOwn(A_PLUS, mode) ? A_PLUS[mode] : null;
                     const scale = target ? width / target.width : 0;
                     const doc = Array.from(photoshop.app.documents).find(candidate => candidate.id === docId);
                     if (!doc) throw new Error("原 Photoshop 文档已关闭，请重新读取。");
-                    if (![x, y, width, height, scale].every(Number.isInteger) || scale < 1 || scale > 4 ||
-                        height !== target.height * scale || x < 0 || y < 0 || x + width > doc.width || y + height > doc.height) {
+                    const size = wfArtAssistantDocumentPixelSize(doc);
+                    if (![x, y, width, height, scale, layerId].every(Number.isInteger) || scale < 1 || scale > 4 ||
+                        height !== target.height * scale || x < 0 || y < 0 || x + width > size.width || y + height > size.height) {
                         throw new Error("裁切框超出文档或尺寸无效，请重新读取。");
                     }
                     result = await photoshop.core.executeAsModal(async () => {
-                        const { imageData, sourceBounds } = await wfArtAssistantGetPixelsWithDepthFallback(
-                            photoshop.app, photoshop.imaging, doc, {
-                                documentID: docId, sourceBounds: { left: x, top: y, right: x + width, bottom: y + height },
-                                componentSize: 8, colorSpace: "RGB", colorProfile: "sRGB IEC61966-2.1", applyAlpha: true,
-                            });
-                        try {
-                            const { width: pixelWidth, height: pixelHeight, components } = imageData;
-                            const bytes = wfArtAssistantTypedPixelsToByteArray(await wfArtAssistantGetImageDataBuffer(imageData),
-                                pixelWidth * pixelHeight * components);
-                            const png = encodePNGFromRGB(pixelWidth, pixelHeight, bytes, components);
-                            return {
-                                url: `data:image/png;base64,${btoa(_uint8ToBinaryFallback(png))}`,
-                                offsetX: sourceBounds.left - x, offsetY: sourceBounds.top - y,
-                            };
-                        } finally {
-                            imageData.dispose();
-                        }
+                        if (!findLayerByIdInDocument(doc, layerId)) throw new Error("原盖印图层已移除，请重新读取。");
+                        return wfArtAssistantReadAPlusPixels(doc, layerId, { left: x, top: y, right: x + width, bottom: y + height });
                     }, { commandName: "读取 A+ 裁切区" });
                     break;
                 }
