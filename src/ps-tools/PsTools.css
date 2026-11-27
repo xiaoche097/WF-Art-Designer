@@ -41,3 +41,33 @@
 .wfa-ps-tools-list button:disabled { opacity: .68; cursor: default; }
 .wfa-ps-tools-status { padding: 8px 12px; border-block-start: 1px solid var(--wf-border); }
 .wfa-ps-tools-status[data-error] { color: var(--wf-error); }
+
+.wfa-aplus fieldset { display: grid; gap: 10px; min-inline-size: 0; margin: 0; padding: 0 12px 12px; border: 0; }
+.wfa-aplus-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.wfa-aplus button, .wfa-aplus-import, .wfa-aplus input[type="number"] {
+    min-block-size: 36px;
+    padding: 6px 8px;
+    border: 1px solid var(--wf-border);
+    border-radius: 6px;
+    background: var(--wf-field);
+    color: var(--wf-text);
+    font: inherit;
+    font-size: 12px;
+}
+.wfa-aplus button:not(:disabled), .wfa-aplus-import, .wfa-aplus summary { cursor: pointer; }
+.wfa-aplus button:disabled { opacity: .6; }
+.wfa-aplus button[aria-pressed="true"] { border-color: var(--wf-accent); background: var(--wf-surface-raised); }
+.wfa-aplus small { display: block; color: var(--wf-muted); }
+.wfa-aplus :is(button, input, summary):focus-visible, .wfa-aplus-import:focus-within { outline: 2px solid var(--wf-accent); outline-offset: 2px; }
+.wfa-aplus-import { position: relative; display: grid; place-items: center; }
+.wfa-aplus-import input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.wfa-aplus-row > label:only-child { grid-column: 1 / -1; }
+.wfa-aplus-scroll { max-height: 380px; overflow: auto; border-radius: 6px; background: var(--wf-field); }
+.wfa-aplus-preview { position: relative; }
+.wfa-aplus-preview img { display: block; width: 100%; height: auto; }
+.wfa-aplus-box { position: absolute; box-shadow: inset 0 0 0 2px #1866e3, inset 0 0 0 3px #f5f7ff; pointer-events: none; }
+.wfa-aplus-box button { position: absolute; top: 2px; right: 2px; min-block-size: 24px; padding: 0 4px; pointer-events: auto; }
+.wfa-aplus details { color: var(--wf-muted); font-size: 12px; }
+.wfa-aplus details .wfa-aplus-row { margin-top: 8px; }
+.wfa-aplus details input { width: 100%; }
+.wfa-aplus .wfa-aplus-save { background: var(--wf-accent); color: var(--wf-bg); font-weight: 650; }

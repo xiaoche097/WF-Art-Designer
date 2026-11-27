@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { invoke, isInWebView } from "../bridge/uxpBridge.js";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.jsx";
+import { APlusCrop } from "./APlusCrop.jsx";
 import { PS_SCRIPTS } from "./catalog.js";
 import "./PsTools.css";
 
@@ -50,5 +51,6 @@ export function PsTools() {
                 {runningId ? "脚本正在 Photoshop 中运行。" : status?.text}
             </p>
         </section>
+        <APlusCrop connected={connected} />
     </div>;
 }

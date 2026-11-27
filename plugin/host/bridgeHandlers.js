@@ -5,6 +5,7 @@ import { runAiAppAndWaitInHost } from "./runninghubAiAppRunnerHost.js";
 import retouchHost from "./retouch/retouchHost.js";
 import clothHost from "./retouch/clothHost.js";
 import { runPsScript } from "./psScripts.js";
+import { A_PLUS } from "../../src/ps-tools/aPlusCrop.js";
 import { createCreativeZip, encodeCreativeZipText, maxCreativeZipBytes } from "./creativeZip.js";
 import { pluginInstallerUrl } from "../../src/utils/pluginReleases.js";
 import { decodeDuckImageBytes } from "./duckLocalDecoder.js";
@@ -2563,6 +2564,37 @@ export function setupBridge(webviewEl) {
                         { commandName: "Preview Capture Bounds" }
                     );
                     result = captureResult || { previewBase64: null };
+                    break;
+                }
+                case "ps.aPlus.readTile": {
+                    const { mode, docId, x, y, width, height } = args[0] || {};
+                    const target = Object.hasOwn(A_PLUS, mode) ? A_PLUS[mode] : null;
+                    const scale = target ? width / target.width : 0;
+                    const doc = Array.from(photoshop.app.documents).find(candidate => candidate.id === docId);
+                    if (!doc) throw new Error("原 Photoshop 文档已关闭，请重新读取。");
+                    if (![x, y, width, height, scale].every(Number.isInteger) || scale < 1 || scale > 4 ||
+                        height !== target.height * scale || x < 0 || y < 0 || x + width > doc.width || y + height > doc.height) {
+                        throw new Error("裁切框超出文档或尺寸无效，请重新读取。");
+                    }
+                    result = await photoshop.core.executeAsModal(async () => {
+                        const { imageData, sourceBounds } = await wfArtAssistantGetPixelsWithDepthFallback(
+                            photoshop.app, photoshop.imaging, doc, {
+                                documentID: docId, sourceBounds: { left: x, top: y, right: x + width, bottom: y + height },
+                                componentSize: 8, colorSpace: "RGB", colorProfile: "sRGB IEC61966-2.1", applyAlpha: true,
+                            });
+                        try {
+                            const { width: pixelWidth, height: pixelHeight, components } = imageData;
+                            const bytes = wfArtAssistantTypedPixelsToByteArray(await wfArtAssistantGetImageDataBuffer(imageData),
+                                pixelWidth * pixelHeight * components);
+                            const png = encodePNGFromRGB(pixelWidth, pixelHeight, bytes, components);
+                            return {
+                                url: `data:image/png;base64,${btoa(_uint8ToBinaryFallback(png))}`,
+                                offsetX: sourceBounds.left - x, offsetY: sourceBounds.top - y,
+                            };
+                        } finally {
+                            imageData.dispose();
+                        }
+                    }, { commandName: "读取 A+ 裁切区" });
                     break;
                 }
                 case "ps.captureSelection": {

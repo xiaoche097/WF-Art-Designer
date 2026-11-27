@@ -1,4 +1,4 @@
-#target photoshop
+﻿#target photoshop
 
 function batchRenameFromList() {
     if (!app.documents.length) {
@@ -7,8 +7,8 @@ function batchRenameFromList() {
     }
     var doc = app.activeDocument;
 
-    // 1. 仅获取最外层选中的【图层组】（剔除选中组内部嵌套的子群组，按面板从上到下排序）
-    var selectedGroups = getTopLevelSelectedGroupsTopToBottom(doc);
+    // 1. 仅获取选中的图层组，按面板从上到下排序
+    var selectedGroups = getSelectedGroupsTopToBottom(doc);
     if (selectedGroups.length === 0) {
         alert("请先在图层面板中选中需要重命名的【图层组】（群组）！");
         return;
@@ -21,7 +21,7 @@ function batchRenameFromList() {
     win.spacing = 10;
     win.margins = 16;
 
-    win.add("statictext", undefined, "当前已在图层面板选中：" + selectedGroups.length + " 个最外层群组（不含组内子群组，按从上往下匹配）");
+    win.add("statictext", undefined, "当前已在图层面板选中：" + selectedGroups.length + " 个图层组（按从上往下匹配）");
 
     // 分隔符设置区
     var sepGroup = win.add("group");
@@ -105,13 +105,13 @@ function batchRenameFromList() {
     // 数量不一致时二次确认，明确提示实际会使用多少个
     if (finalNames.length !== selectedGroups.length) {
         var diffMsg = "数量不一致：\n" +
-                      "• 已选中最外层群组：" + selectedGroups.length + " 个\n" +
+                      "• 已选中图层组：" + selectedGroups.length + " 个\n" +
                       "• 列表名称数量：" + finalNames.length + " 条\n\n" +
                       "将按从上到下顺序使用前 " + usedCount + " 个名称进行重命名，是否继续？";
         if (!confirm(diffMsg)) return;
     }
 
-    // 3. 底层 ActionManager 高速执行重命名（仅针对最外层群组）
+    // 3. 底层 ActionManager 高速执行重命名（仅针对显式选中的群组）
     function executeBatchRename() {
         var c2t = charIDToTypeID;
         var fixColon = cbFixColon.value;
@@ -147,111 +147,52 @@ function batchRenameFromList() {
     alert(doneMsg);
 }
 
-// 查找某个群组（startIndex）对应的闭合标记（layerSectionEnd）的 itemIndex
-function findGroupEndIndex(startIndex) {
-    var s2t = stringIDToTypeID;
-    var c2t = charIDToTypeID;
-    var depth = 0;
-
-    // 图层栈从上往下是 itemIndex 递减，组闭合标记在下方（更小的 index）
-    for (var idx = startIndex - 1; idx >= 1; idx--) {
-        try {
-            var ref = new ActionReference();
-            ref.putIndex(c2t("Lyr "), idx);
-            var desc = executeActionGet(ref);
-            var sec = typeIDToStringID(desc.getEnumerationValue(s2t("layerSection")));
-            if (sec === "layerSectionStart") {
-                depth++;
-            } else if (sec === "layerSectionEnd") {
-                if (depth === 0) {
-                    return idx;
-                }
-                depth--;
-            }
-        } catch (e) {
-            break;
-        }
-    }
-    return 0;
+function readSelectedLayerList(property) {
+    var key = stringIDToTypeID(property);
+    var ref = new ActionReference();
+    ref.putProperty(charIDToTypeID("Prpr"), key);
+    ref.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    try {
+        var desc = executeActionGet(ref);
+        if (desc.hasKey(key)) return desc.getList(key);
+    } catch (error) {}
+    var docRef = new ActionReference();
+    docRef.putEnumerated(charIDToTypeID("Dcmn"), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    var docDesc = executeActionGet(docRef);
+    return docDesc.hasKey(key) ? docDesc.getList(key) : null;
 }
 
-// 仅获取选中的【最外层图层组】（排除被其他选中组包在里面的子群组）并按从上到下排序
-function getTopLevelSelectedGroupsTopToBottom(doc) {
+// Use selected IDs, including explicitly selected nested groups, ordered by
+// their actual stack index. LayerSectionEnd marker indices are not layer IDs.
+function getSelectedGroupsTopToBottom(doc) {
     var s2t = stringIDToTypeID;
     var c2t = charIDToTypeID;
-    var ref = new ActionReference();
-    ref.putEnumerated(c2t("Dcmn"), c2t("Ordn"), c2t("Trgt"));
-    var docDesc = executeActionGet(ref);
+    var idList = readSelectedLayerList("targetLayersIDs");
+    var idxList = readSelectedLayerList("targetLayers");
+    var groups = [], seen = {};
+    var hasBg = false;
+    try { hasBg = doc.backgroundLayer != null; } catch (error) {}
 
-    var targetIDs = [];
-    if (docDesc.hasKey(s2t("targetLayersIDs"))) {
-        var idList = docDesc.getList(s2t("targetLayersIDs"));
-        for (var i = 0; i < idList.count; i++) {
-            targetIDs.push(idList.getReference(i).getIdentifier());
+    var byIndex = idxList && idxList.count > (idList ? idList.count : 0);
+    var list = byIndex ? idxList : idList;
+    var count = list && list.count ? list.count : 1;
+    for (var i = 0; i < count; i++) {
+        var ref = new ActionReference();
+        if (!list || !list.count) {
+            ref.putEnumerated(c2t("Lyr "), c2t("Ordn"), c2t("Trgt"));
+        } else if (byIndex) {
+            ref.putIndex(c2t("Lyr "), list.getReference(i).getIndex() + (hasBg ? 0 : 1));
+        } else {
+            ref.putIdentifier(c2t("Lyr "), list.getReference(i).getIdentifier());
         }
-    } else if (docDesc.hasKey(s2t("targetLayers"))) {
-        var idxList = docDesc.getList(s2t("targetLayers"));
-        var hasBg = false;
-        try { hasBg = doc.backgroundLayer != null; } catch (e) {}
-        for (var j = 0; j < idxList.count; j++) {
-            var r = new ActionReference();
-            r.putIndex(c2t("Lyr "), idxList.getReference(j).getIndex() + (hasBg ? 0 : 1));
-            targetIDs.push(executeActionGet(r).getInteger(s2t("layerID")));
-        }
-    } else {
-        var rSingle = new ActionReference();
-        rSingle.putEnumerated(c2t("Lyr "), c2t("Ordn"), c2t("Trgt"));
-        targetIDs.push(executeActionGet(rSingle).getInteger(s2t("layerID")));
+        var layer = executeActionGet(ref);
+        var id = layer.getInteger(s2t("layerID"));
+        if (seen[id] || typeIDToStringID(layer.getEnumerationValue(s2t("layerSection"))) !== "layerSectionStart") continue;
+        seen[id] = true;
+        groups.push({ id: id, itemIndex: layer.getInteger(s2t("itemIndex")) });
     }
-
-    var rawGroups = [];
-    var seenIds = {};
-    for (var k = 0; k < targetIDs.length; k++) {
-        var id = targetIDs[k];
-        if (seenIds[id]) continue;
-        seenIds[id] = true;
-
-        var lyrRef = new ActionReference();
-        lyrRef.putIdentifier(c2t("Lyr "), id);
-        var lyrDesc = executeActionGet(lyrRef);
-        var sectionType = typeIDToStringID(lyrDesc.getEnumerationValue(s2t("layerSection")));
-        if (sectionType !== "layerSectionStart") continue;
-
-        var startIdx = lyrDesc.getInteger(s2t("itemIndex"));
-        var endIdx = findGroupEndIndex(startIdx);
-
-        rawGroups.push({
-            id: id,
-            startIndex: startIdx,
-            endIndex: endIdx
-        });
-    }
-
-    // 过滤掉嵌套在另一个选中群组内部的“子群组”
-    var topGroups = [];
-    for (var a = 0; a < rawGroups.length; a++) {
-        var cur = rawGroups[a];
-        var isNestedInsideSelected = false;
-        for (var b = 0; b < rawGroups.length; b++) {
-            if (a === b) continue;
-            var parentCand = rawGroups[b];
-            // 如果 parentCand 的范围严格包住 cur（startIndex 更大，endIndex 更小）
-            if (parentCand.startIndex > cur.startIndex && cur.startIndex > parentCand.endIndex) {
-                isNestedInsideSelected = true;
-                break;
-            }
-        }
-        if (!isNestedInsideSelected) {
-            topGroups.push(cur);
-        }
-    }
-
-    // startIndex 从大到小排序 = 图层面板从上到下
-    topGroups.sort(function (x, y) {
-        return y.startIndex - x.startIndex;
-    });
-
-    return topGroups;
+    groups.sort(function (a, b) { return b.itemIndex - a.itemIndex; });
+    return groups;
 }
 
 batchRenameFromList();
